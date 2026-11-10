@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadSet } from './data/cdragon';
 import { DEMO_SET } from './data/demo';
 import { COLS, ROWS, type Board, type Champion, type GameSet } from './data/types';
+import { advise, type Situation } from './engine/economy';
+import { buildable, componentPriority, resolveItems } from './engine/items';
 import { analyze, autoArrange, bestHex, hex, mirror, SCOUTING_CHECKLIST } from './engine/positioning';
 import { suggest } from './engine/suggest';
 import { boardChampions, traitStates } from './engine/traits';
@@ -38,6 +40,9 @@ export default function App() {
   const [board, setBoard] = useStored<Board>('coop-tft:board', {});
   const [level, setLevel] = useStored('coop-tft:level', 6);
   const [comps, setComps] = useStored<SavedComp[]>('coop-tft:comps', []);
+  const [plan, setPlan] = useStored<MetaComp | null>('coop-tft:plan', null);
+  const [game, setGame] = useStored('coop-tft:game', { stage: '2-1', gold: 10, hp: 100 });
+  const [held, setHeld] = useStored<Record<string, number>>('coop-tft:held', {});
   const [tab, setTab] = useState<Tab>('meta');
   const [selected, setSelected] = useState<number | null>(null);
   const [traitFilter, setTraitFilter] = useState<string | null>(null);
@@ -79,6 +84,30 @@ export default function App() {
   const traits = useMemo(() => traitStates(units, set), [units, set]);
   const tips = useMemo(() => analyze(board, set), [board, set]);
   const ideas = useMemo(() => suggest(units, set, level), [units, set, level]);
+  // Carry principal : celui de la compo méta chargée, sinon l'unité à distance la plus chère du plateau.
+  const carry = useMemo(() => {
+    const fromPlan = plan?.carries.map((k) => byCanon.get(canon(k.id))).find(Boolean);
+    if (fromPlan) return fromPlan;
+    const ranged = units.filter((u) => u.role === 'backline' || u.role === 'ranged');
+    return (ranged.length ? ranged : units).slice().sort((a, b) => b.cost - a.cost)[0];
+  }, [plan, byCanon, units]);
+  const situation: Situation = { level, ...game };
+  const econ = useMemo(
+    () => (carry ? advise({ level, ...game }, { targets: [carry], carryCost: carry.cost }, set) : null),
+    [level, game, units, carry, set],
+  );
+  const itemNeeds = useMemo(
+    () =>
+      (plan?.carries ?? []).map((k) => ({
+        unit: byCanon.get(canon(k.id)),
+        needs: resolveItems(k.items, set),
+      })),
+    [plan, byCanon, set],
+  );
+  const allNeeds = itemNeeds.flatMap((n) => n.needs);
+  const parts = componentPriority(allNeeds);
+  const ready = buildable(allNeeds, held);
+
   const shopRead = useMemo(() => (frame ? readShop(frame, set.champions) : null), [frame, set]);
   // Unités de la boutique qui font partie du plan (le plateau chargé) ou qui en complètent une synergie.
   const planIds = useMemo(() => new Set(Object.values(board)), [board]);
@@ -156,6 +185,8 @@ export default function App() {
     const raw: Board = {};
     compUnits(c).forEach((u, i) => (raw[i] = u.id));
     setBoard(autoArrange(raw, set));
+    setPlan(c);
+    setHeld({});
     setLevel(Math.min(10, Math.max(level, Object.keys(raw).length)));
     setSelected(null);
   };
@@ -378,6 +409,101 @@ export default function App() {
 
           {tab === 'advice' && (
             <div className="panel">
+              <h3>Économie</h3>
+              <div className="situation">
+                <label>
+                  Manche
+                  <select value={game.stage} onChange={(e) => setGame({ ...game, stage: e.target.value })}>
+                    {[2, 3, 4, 5, 6, 7].flatMap((st) =>
+                      [1, 2, 3, 5, 6].map((r) => (
+                        <option key={`${st}-${r}`}>
+                          {st}-{r}
+                        </option>
+                      )),
+                    )}
+                  </select>
+                </label>
+                <label>
+                  Or <b>{game.gold}</b>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={game.gold}
+                    onChange={(e) => setGame({ ...game, gold: Number(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  PV <b>{game.hp}</b>
+                  <input
+                    type="range"
+                    min={1}
+                    max={100}
+                    value={game.hp}
+                    onChange={(e) => setGame({ ...game, hp: Number(e.target.value) })}
+                  />
+                </label>
+              </div>
+              {econ ? (
+                <div className={`verdict ${econ.action}`}>
+                  <b>{econ.title}</b>
+                  <ul>
+                    {econ.reasons.map((r, k) => (
+                      <li key={k}>{r}</li>
+                    ))}
+                  </ul>
+                  <small>
+                    Niveau {situation.level} (réglable en haut). Pourcentages indicatifs, basés sur les tables standard.
+                  </small>
+                </div>
+              ) : (
+                <p className="muted">Charge une compo depuis l'onglet Méta pour obtenir un conseil d'économie.</p>
+              )}
+
+              <h3>Objets</h3>
+              {allNeeds.length ? (
+                <>
+                  {itemNeeds.map(
+                    ({ unit, needs }) =>
+                      unit && (
+                        <div key={unit.id} className="itemrow">
+                          <Icon c={unit} />
+                          <ul>
+                            {needs.map((n, k) => (
+                              <li key={k} className={ready.includes(n) ? 'ready' : ''}>
+                                <b>{n.item.name}</b>
+                                {n.parts.length === 2 && (
+                                  <small> = {n.parts.map((p) => set.items[p]?.name ?? p).join(' + ')}</small>
+                                )}
+                                {ready.includes(n) && <small> · faisable maintenant</small>}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ),
+                  )}
+                  {parts.length > 0 && (
+                    <>
+                      <small>Composants à prioriser (tape ceux que tu as en main) :</small>
+                      <div className="parts">
+                        {parts.map((p) => (
+                          <button
+                            key={p.key}
+                            className={held[p.key] ? 'on' : ''}
+                            onClick={() => setHeld({ ...held, [p.key]: ((held[p.key] ?? 0) + 1) % 4 })}
+                          >
+                            {set.items[p.key]?.name ?? p.key} ×{p.count}
+                            {held[p.key] ? <b> · en main {held[p.key]}</b> : null}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <p className="muted">Les objets conseillés apparaissent quand une compo méta est chargée.</p>
+              )}
+
               <h3>Placement</h3>
               <ul className="tips">
                 {tips.map((t, k) => (

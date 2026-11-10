@@ -19,6 +19,8 @@ export interface Trait {
 export interface Item {
   name: string;
   icon?: string;
+  /** Recette : identifiants canoniques des deux composants. */
+  from?: string[];
 }
 
 export interface GameSet {

@@ -17,6 +17,9 @@ lance TFT et glisse Coop TFT en écran partagé. Toutes les versions :
 | Fonction | Détail |
 | --- | --- |
 | Méta en direct | Compos les plus performantes du patch en cours (tier S à C, place moyenne, top 4, taux de victoire, popularité, objets des carrys), recalculées toutes les 4 h à partir des parties des meilleurs joueurs EUW. Un tap charge la compo sur le plateau. |
+| Économie | Conseil « économise / monte de niveau / roll » selon la manche, l'or, les PV et le coût du carry visé, avec la chance de le trouver en boutique au niveau actuel et au suivant. |
+| Objets | Objets conseillés pour les carrys de la compo chargée, leurs recettes, les composants à prioriser et ce qui est faisable avec ceux en main. |
+| Lecture d'écran (expérimental) | Dans l'app Android : capture de l'écran et lecture du texte sur l'appareil pour repérer la boutique et signaler les unités de la compo. Non conforme aux règles de Riot sur les outils en partie : à activer en connaissance de cause. |
 | Données du set | Champions, traits, paliers et objets du set en cours uniquement, chargés depuis Community Dragon (français, repli anglais), mis en cache 12 h. |
 | Plateau 4 × 7 | Tap sur une unité : elle se pose sur la meilleure case libre pour son rôle. Tap unité puis case : déplacement ou échange. |
 | Synergies | Compteur par trait avec paliers ; tap sur un trait pour filtrer les unités correspondantes. |
@@ -90,6 +93,10 @@ scripts/fetch-meta.mjs     collecte des parties via l'API Riot (workflow Meta)
 src/engine/traits.ts       comptage des traits et paliers
 src/engine/suggest.ts      classement des unités à ajouter
 src/engine/positioning.ts  cases préférées par rôle, placement auto, analyse
+src/engine/economy.ts      conseil d'économie (tables de boutique, niveaux clés)
+src/engine/items.ts        recettes, composants prioritaires, objets faisables
+src/screen/                lecture d'écran : repérage de la boutique dans le texte lu
+plugins/screen-reader/     plugin Android : capture (MediaProjection) + texte (ML Kit)
 src/App.tsx                interface (plateau, synergies, onglets)
 ```
 

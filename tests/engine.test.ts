@@ -3,6 +3,8 @@ import { classifyRole, normalize } from '../src/data/cdragon';
 import { DEMO_SET } from '../src/data/demo';
 import type { Board } from '../src/data/types';
 import { analyze, autoArrange, bestHex, colOf, hex, mirror, rowOf } from '../src/engine/positioning';
+import { advise, expectedLevel, hitChance, interest, keyLevel } from '../src/engine/economy';
+import { buildable, componentPriority, resolveItems } from '../src/engine/items';
 import { suggest } from '../src/engine/suggest';
 import { normText, readShop } from '../src/screen/match';
 import { boardChampions, countTraits, traitStates } from '../src/engine/traits';
@@ -230,5 +232,72 @@ describe('lecture de l’écran', () => {
 
   it('ne déclare pas de boutique sur un seul nom', () => {
     expect(readShop({ width: 100, height: 100, lines: [line('Ahri', 1, 1)] }, set).shop).toEqual([]);
+  });
+});
+
+describe('économie', () => {
+  const four = DEMO_SET.champions.filter((c) => c.cost === 4);
+  const plan = { targets: four.slice(0, 3), carryCost: 4 };
+  const sit = (o: Partial<{ level: number; gold: number; hp: number; stage: string }>) => ({
+    level: 7,
+    gold: 50,
+    hp: 90,
+    stage: '4-1',
+    ...o,
+  });
+
+  it('calcule les repères de base', () => {
+    expect(keyLevel(4)).toBe(8);
+    expect(interest(37)).toBe(3);
+    expect(interest(80)).toBe(5);
+    expect(expectedLevel('3-2')).toBe(6);
+    expect(expectedLevel('4-5')).toBe(8);
+    // Les 4 PO sont introuvables au niveau 4, et de plus en plus fréquents ensuite.
+    expect(hitChance(4, four, DEMO_SET)).toBe(0);
+    expect(hitChance(8, four, DEMO_SET)).toBeGreaterThan(hitChance(7, four, DEMO_SET));
+  });
+
+  it('économise quand tout va bien, dépense quand les PV baissent', () => {
+    expect(advise(sit({ gold: 30, stage: '3-5', level: 6 }), plan, DEMO_SET).action).toBe('save');
+    expect(advise(sit({ gold: 60, hp: 45 }), plan, DEMO_SET).action).toBe('level');
+    expect(advise(sit({ gold: 35, hp: 45, level: 8 }), plan, DEMO_SET).action).toBe('roll');
+    expect(advise(sit({ gold: 12, hp: 45, level: 8 }), plan, DEMO_SET).action).toBe('save');
+    expect(advise(sit({ gold: 20, hp: 20 }), plan, DEMO_SET).action).toBe('allin');
+  });
+
+  it('au niveau clé avec 50 or, c’est le moment de roll', () => {
+    const a = advise(sit({ level: 8, gold: 55, stage: '4-5' }), plan, DEMO_SET);
+    expect(a.action).toBe('roll');
+    expect(a.reasons.join(' ')).toContain('niveau 8');
+  });
+
+  it('traite un carry à 1-2 PO comme une compo de reroll', () => {
+    const cheap = { targets: DEMO_SET.champions.filter((c) => c.cost === 1), carryCost: 1 };
+    expect(advise(sit({ level: 5, gold: 62, stage: '3-2' }), cheap, DEMO_SET).title).toContain('12 or');
+    expect(advise(sit({ level: 5, gold: 40, stage: '3-2' }), cheap, DEMO_SET).action).toBe('save');
+  });
+});
+
+describe('objets', () => {
+  const set = {
+    ...DEMO_SET,
+    items: {
+      shojin: { name: 'Lance de Shojin', from: ['tear', 'sword'] },
+      deathblade: { name: 'Lame de la mort', from: ['sword', 'sword'] },
+      tear: { name: 'Larme' },
+      sword: { name: 'Épée' },
+    },
+  };
+  it('retrouve les recettes, classe les composants et dit ce qui est faisable', () => {
+    const needs = resolveItems(['TFT_Item_Shojin', 'XX_Deathblade', 'XX_Inconnu'], set);
+    expect(needs.map((n) => n.item.name)).toEqual(['Lance de Shojin', 'Lame de la mort']);
+    expect(componentPriority(needs)).toEqual([
+      { key: 'sword', count: 3 },
+      { key: 'tear', count: 1 },
+    ]);
+    expect(buildable(needs, { sword: 2 }).map((n) => n.key)).toEqual(['deathblade']);
+    // Une seule épée ne peut pas servir aux deux objets.
+    expect(buildable(needs, { sword: 1, tear: 1 }).map((n) => n.key)).toEqual(['shojin']);
+    expect(buildable(needs, { sword: 3, tear: 1 })).toHaveLength(2);
   });
 });

@@ -2,7 +2,7 @@ import { canon } from '../meta/aggregate';
 import type { Champion, GameSet, Item, Role, Trait } from './types';
 
 const BASE = 'https://raw.communitydragon.org/latest';
-const CACHE_KEY = 'coop-tft:data:v3';
+const CACHE_KEY = 'coop-tft:data:v4';
 const CACHE_TTL = 12 * 3600 * 1000;
 
 /* Forme (partielle) du fichier cdragon/tft/<locale>.json */
@@ -33,6 +33,7 @@ interface RawItem {
   apiName?: string | null;
   name?: string | null;
   icon?: string | null;
+  composition?: string[] | null;
 }
 export interface RawData {
   setData?: RawSet[];
@@ -101,7 +102,11 @@ export function normalize(data: RawData): GameSet | undefined {
   const items: Record<string, Item> = {};
   for (const it of data.items ?? []) {
     if (it.apiName && it.name && /item/i.test(it.apiName))
-      items[canon(it.apiName)] ??= { name: it.name, icon: assetUrl(it.icon) };
+      items[canon(it.apiName)] ??= {
+        name: it.name,
+        icon: assetUrl(it.icon),
+        ...(it.composition?.length === 2 ? { from: it.composition.map(canon) } : {}),
+      };
   }
   const raws = (data.setData ?? []).slice().sort((a, b) => {
     if (a.number !== b.number) return b.number - a.number;
