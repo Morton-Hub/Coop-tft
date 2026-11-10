@@ -129,7 +129,7 @@ export default function App() {
         <strong>Coop TFT</strong>
         <span className="setname">
           {set.label}
-          {typeof meta === 'object' && meta.meta.set === set.number && ` · patch ${meta.meta.patch}`}
+          {typeof meta === 'object' && meta.meta.set === set.number && meta.meta.patch && ` · patch ${meta.meta.patch}`}
         </span>
         <label className="level">
           Niv.
@@ -251,7 +251,8 @@ export default function App() {
                 <>
                   <div className="metahead">
                     <small>
-                      Patch {meta.meta.patch} · {meta.meta.matches} parties {meta.meta.region.toUpperCase()} haut
+                      {meta.meta.patch && `Patch ${meta.meta.patch} · `}
+                      {meta.meta.matches} parties {meta.meta.region.toUpperCase()} haut
                       niveau · {ago(meta.meta.generatedAt)}
                       {meta.stale && ' · hors ligne'}
                     </small>

@@ -22,7 +22,10 @@ export interface RawMatch {
   info: {
     queue_id: number;
     tft_set_number: number;
-    game_version: string;
+    /** Souvent inexploitable (« TFT Unreal Version ?.?.?.? ») : le patch est alors laissé vide. */
+    game_version?: string;
+    /** Fin de partie, en millisecondes. */
+    game_datetime?: number;
     participants: RawParticipant[];
   };
 }
@@ -112,11 +115,15 @@ const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1
 
 export function aggregate(
   matches: RawMatch[],
-  opts: { region?: string; now?: Date; minBoardsForPatch?: number } = {},
+  opts: { region?: string; now?: Date; minBoardsForPatch?: number; maxAgeDays?: number } = {},
 ): MetaData {
   const ranked = matches.filter((m) => m.info?.queue_id === RANKED_QUEUE && m.info.participants?.length);
   const set = Math.max(0, ...ranked.map((m) => m.info.tft_set_number));
-  let pool = ranked.filter((m) => m.info.tft_set_number === set);
+  // Seules les parties récentes comptent : la méta bouge à chaque patch.
+  const oldest = (opts.now ?? new Date()).getTime() - (opts.maxAgeDays ?? 7) * 86400000;
+  let pool = ranked.filter(
+    (m) => m.info.tft_set_number === set && (m.info.game_datetime === undefined || m.info.game_datetime >= oldest),
+  );
 
   // On ne garde que le dernier patch dès qu'il a assez de parties pour être représentatif.
   const latest = pool.map((m) => patchOf(m.info.game_version)).sort((a, b) => patchNum(b) - patchNum(a))[0] ?? '?';
@@ -192,7 +199,7 @@ export function aggregate(
     generatedAt: (opts.now ?? new Date()).toISOString(),
     region: opts.region ?? '',
     set,
-    patch: latest,
+    patch: latest === '?' ? '' : latest,
     matches: pool.length,
     boards,
     comps: comps.slice(0, 25),

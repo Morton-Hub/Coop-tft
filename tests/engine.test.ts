@@ -136,8 +136,9 @@ describe('meta', () => {
           traits: [trait('Set_Colosse', 4, 2), trait('Set_Tireur', 4, 2)],
           units: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map((character_id) => ({ character_id })),
         };
-  const match = (version: string, queue = 1100, setNumber = 18): RawMatch => ({
+  const match = (version: string, queue = 1100, setNumber = 18, daysAgo = 1): RawMatch => ({
     info: {
+      game_datetime: Date.parse('2026-11-10T00:00:00Z') - daysAgo * 86400000,
       queue_id: queue,
       tft_set_number: setNumber,
       game_version: `Linux Version 16.${version} (Nov 01 2026) [PUBLIC] <Releases/16.${version}>`,
@@ -172,6 +173,7 @@ describe('meta', () => {
       ...Array.from({ length: 10 }, () => match('21')),
       match('22', 1090), // partie non classée
       match('22', 1100, 17), // ancien set
+      match('22', 1100, 18, 12), // trop ancienne
     ];
     const meta = aggregate(matches, { region: 'euw1', now: new Date('2026-11-10T00:00:00Z') });
     expect(meta).toMatchObject({ set: 18, patch: '16.22', matches: 30, boards: 240, region: 'euw1' });
@@ -185,5 +187,13 @@ describe('meta', () => {
     expect(mage.units).toEqual(['M_Carry', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M_Flex1', 'M_Flex2']);
     expect(mage.carries).toEqual([{ id: 'M_Carry', items: ['Item_A', 'Item_B', 'Item_C'] }]);
     expect(tank).toMatchObject({ tier: 'C', avgPlacement: 6.5, top4: 0, carries: [] });
+  });
+});
+
+describe('meta sans numéro de patch', () => {
+  it('laisse le patch vide quand la version est inexploitable', () => {
+    expect(patchOf('TFT Unreal Version ?.?.?.?')).toBe('?');
+    expect(patchOf(undefined)).toBe('?');
+    expect(aggregate([], {}).patch).toBe('');
   });
 });

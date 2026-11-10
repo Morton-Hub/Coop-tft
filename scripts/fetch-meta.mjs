@@ -74,34 +74,51 @@ for (const id of [...ids].slice(0, MATCHES)) {
   if (m?.info) matches.push(m);
 }
 
-console.log('Exemple de version :', JSON.stringify(matches[0]?.info?.game_version), '| champs :', Object.keys(matches[0]?.info ?? {}).join(','));
-
 const meta = aggregate(matches, { region: PLATFORM });
 if (!meta.comps.length) throw new Error(`Aucune compo exploitable (${matches.length} parties lues).`);
-mkdirSync(dirname(out), { recursive: true });
-writeFileSync(out, JSON.stringify(meta));
-console.log(`Set ${meta.set}, patch ${meta.patch} : ${meta.comps.length} compos sur ${meta.boards} plateaux -> ${out}`);
 
-// Contrôle : chaque id de la méta doit se retrouver dans Community Dragon (source des noms et icônes de l'app).
+// Community Dragon est la source des noms et icônes de l'app : on vérifie que chaque id de la méta
+// s'y retrouve, et on remplace les ids d'objets que Riot nomme autrement par ceux de Community Dragon.
 try {
   const cd = await (await fetch('https://raw.communitydragon.org/latest/cdragon/tft/en_us.json')).json();
   const cur = cd.setData.filter((s) => s.number === meta.set);
+  const items = cd.items.filter((i) => i.apiName && i.name && /item/i.test(i.apiName));
+  const itemIds = new Set(items.map((i) => canon(i.apiName)));
+  // Repli par nom anglais : « EdgeOfNight » -> « Edge of Night », « EmblemInvoker » -> « Invoker Emblem ».
+  const nameKey = (name) => {
+    const k = name.toLowerCase().replace(/[^a-z]/g, '');
+    return k.endsWith('emblem') ? 'emblem' + k.slice(0, -6) : k;
+  };
+  const byName = new Map();
+  for (const i of items) if (!byName.has(nameKey(i.name))) byName.set(nameKey(i.name), i.apiName);
+
+  const unknownItems = new Set();
+  for (const c of meta.comps)
+    for (const k of c.carries)
+      k.items = k.items.map((id) => {
+        if (itemIds.has(canon(id))) return id;
+        const viaName = byName.get(canon(id));
+        if (!viaName) unknownItems.add(id);
+        return viaName ?? id;
+      });
+
   const known = {
     unités: new Set(cur.flatMap((s) => s.champions.map((c) => canon(c.apiName)))),
     traits: new Set(cur.flatMap((s) => s.traits.map((t) => canon(t.apiName)))),
-    objets: new Set(cd.items.filter((i) => /item/i.test(i.apiName ?? '')).map((i) => canon(i.apiName))),
   };
   const used = {
     unités: new Set(meta.comps.flatMap((c) => c.units)),
     traits: new Set(meta.comps.flatMap((c) => c.traits.map((t) => t.id))),
-    objets: new Set(meta.comps.flatMap((c) => c.carries.flatMap((k) => k.items))),
   };
   for (const kind of Object.keys(used)) {
     const missing = [...used[kind]].filter((id) => !known[kind].has(canon(id)));
     console.log(`${kind} : ${used[kind].size - missing.length}/${used[kind].size} reconnus${missing.length ? ' — inconnus : ' + missing.join(', ') : ''}`);
   }
-  const sample = cur[0];
-  console.log('Exemples Community Dragon :', sample?.champions.slice(0, 3).map((c) => c.apiName).join(', '), '|', sample?.traits.slice(0, 3).map((t) => t.apiName).join(', '), '|', cd.items.filter((i) => /item/i.test(i.apiName ?? '')).slice(-3).map((i) => i.apiName).join(', '));
+  console.log(`objets inconnus : ${unknownItems.size ? [...unknownItems].join(', ') : 'aucun'}`);
 } catch (e) {
   console.log(`Contrôle Community Dragon impossible : ${e.message}`);
 }
+
+mkdirSync(dirname(out), { recursive: true });
+writeFileSync(out, JSON.stringify(meta));
+console.log(`Set ${meta.set}${meta.patch ? `, patch ${meta.patch}` : ''} : ${meta.comps.length} compos sur ${meta.boards} plateaux -> ${out}`);
