@@ -7,6 +7,7 @@ import { advise, expectedLevel, hitChance, interest, keyLevel } from '../src/eng
 import { buildable, componentPriority, resolveItems } from '../src/engine/items';
 import { suggest } from '../src/engine/suggest';
 import { normText, readShop } from '../src/screen/match';
+import { isNewer } from '../src/update';
 import { boardChampions, countTraits, traitStates } from '../src/engine/traits';
 import { adjusted, aggregate, canon, patchOf, prettyId, signature, type RawMatch, type RawParticipant } from '../src/meta/aggregate';
 
@@ -299,5 +300,15 @@ describe('objets', () => {
     // Une seule épée ne peut pas servir aux deux objets.
     expect(buildable(needs, { sword: 1, tear: 1 }).map((n) => n.key)).toEqual(['shojin']);
     expect(buildable(needs, { sword: 3, tear: 1 })).toHaveLength(2);
+  });
+});
+
+describe('mise à jour', () => {
+  it('ne signale une mise à jour que si une autre version est réellement publiée', () => {
+    const release = { target_commitish: 'bbb', assets: [{}] };
+    expect(isNewer('aaa', release)).toBe(true);
+    expect(isNewer('bbb', release)).toBe(false);
+    expect(isNewer('', release)).toBe(false); // build local
+    expect(isNewer('aaa', { target_commitish: 'bbb', assets: [] })).toBe(false); // APK pas encore déposé
   });
 });

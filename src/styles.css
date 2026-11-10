@@ -630,3 +630,12 @@ nav button {
 .parts button.on {
   border-color: var(--accent);
 }
+
+.banner.update {
+  background: #14331f;
+  color: #a6e3b5;
+}
+.banner.update a {
+  color: #fff;
+  font-weight: 700;
+}

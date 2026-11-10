@@ -12,6 +12,7 @@ import { ago, loadMeta, type MetaResult } from './meta/load';
 import { readShop, type ScreenFrame } from './screen/match';
 import { screenReaderAvailable, startScreenReader } from './screen/reader';
 import { useStored } from './storage';
+import { APK_URL, updateAvailable } from './update';
 
 type Tab = 'meta' | 'units' | 'advice' | 'comps' | 'screen';
 interface SavedComp {
@@ -51,6 +52,7 @@ export default function App() {
   const [frame, setFrame] = useState<(ScreenFrame & { at: number }) | null>(null);
   const [reading, setReading] = useState<'off' | 'starting' | 'on'>('off');
   const [readError, setReadError] = useState('');
+  const [update, setUpdate] = useState(false);
   const stopReader = useRef<(() => Promise<void>) | null>(null);
 
   const load = (force: boolean) => {
@@ -74,6 +76,8 @@ export default function App() {
   useEffect(() => {
     load(false);
     refreshMeta(false);
+    // La mise à jour ne concerne que l'app Android installée.
+    if (screenReaderAvailable()) updateAvailable().then(setUpdate);
   }, []);
 
   const byId = useMemo(() => new Map(set.champions.map((c) => [c.id, c])), [set]);
@@ -216,6 +220,14 @@ export default function App() {
         </span>
       </header>
 
+      {update && (
+        <div className="banner update">
+          Mise à jour disponible.{' '}
+          <a href={APK_URL} target="_blank" rel="noreferrer">
+            Télécharger et installer
+          </a>
+        </div>
+      )}
       {status === 'demo' && (
         <div className="banner">
           Données réelles injoignables : jeu de démo fictif affiché.{' '}
