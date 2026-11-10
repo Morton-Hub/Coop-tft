@@ -29,7 +29,9 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
       - run: cp android/app/build/outputs/apk/debug/app-debug.apk coop-tft.apk
+      # Facultatif : ne doit pas bloquer la publication si le quota d'artefacts du compte est plein.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: coop-tft-apk
           path: coop-tft.apk
