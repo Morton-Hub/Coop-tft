@@ -43,7 +43,7 @@ export interface Plan {
   targets: Champion[];
   /** Coût du carry principal : il fixe le niveau où dépenser, faute de mieux. */
   carryCost: number;
-  /** Niveau médian des top 4 avec cette compo, quand la méta le fournit. */
+  /** Niveau final médian des top 4 avec cette compo, quand la méta le fournit. */
   keyLevel?: number;
   /** Compo de reroll constatée dans les parties, quand la méta le fournit. */
   reroll?: boolean;
@@ -80,8 +80,9 @@ const pct = (p: number) => `${Math.round(p * 100)} %`;
 export function advise(sit: Situation, plan: Plan, set: GameSet): Advice {
   const { level, gold, hp, stage } = sit;
   const reroll = plan.reroll ?? plan.carryCost <= 2;
-  // Une compo de reroll se joue au niveau du coût de son carry ; sinon on vise le niveau des gagnants.
-  const key = reroll ? keyLevel(plan.carryCost) : (plan.keyLevel ?? keyLevel(plan.carryCost));
+  // On dépense au niveau où le carry se trouve le mieux. Le niveau final des gagnants (plan.keyLevel)
+  // est un objectif de fin de partie, pas le moment de roll : il est donné à titre d'information.
+  const key = keyLevel(plan.carryCost);
   const levelCost = GOLD_TO_LEVEL[level];
   const canLevel = levelCost !== undefined && gold >= levelCost;
   const reasons: string[] = [];
@@ -98,10 +99,12 @@ export function advise(sit: Situation, plan: Plan, set: GameSet): Advice {
       ? plan.reroll
         ? `Chez les top 4, le carry est le plus souvent 3 étoiles : compo de reroll, on reste au niveau ${key}.`
         : `Carry à ${plan.carryCost} PO : compo de reroll, on reste au niveau ${key} pour le monter 3 étoiles.`
-      : plan.keyLevel
-        ? `Les joueurs qui font top 4 avec cette compo finissent niveau ${plan.keyLevel}.`
-        : `Carry à ${plan.carryCost} PO : c'est au niveau ${key} qu'on le trouve le mieux.`,
+      : `Carry à ${plan.carryCost} PO : c'est au niveau ${key} qu'on le trouve le mieux.`,
   );
+  if (!reroll && plan.keyLevel && plan.keyLevel > key)
+    reasons.push(
+      `Les top 4 finissent niveau ${plan.keyLevel} avec cette compo : une fois ton plateau stabilisé, reconstruis ton or pour y monter.`,
+    );
   const toNext = 10 - (gold % 10);
   const interestNote =
     gold < 50

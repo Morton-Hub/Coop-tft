@@ -388,7 +388,8 @@ describe('faits tirés des parties', () => {
     const a = advise(base, { targets: [carry], carryCost: 4, reroll: true }, DEMO_SET);
     expect(a.reasons.join(' ')).toContain('3 étoiles');
     const fast9 = advise({ ...base, level: 8 }, { targets: [carry], carryCost: 4, keyLevel: 9 }, DEMO_SET);
+    // Le niveau final des gagnants est un objectif, pas le moment de roll : au niveau 8 on dépense.
     expect(fast9.reasons.join(' ')).toContain('finissent niveau 9');
-    expect(fast9.action).not.toBe('roll'); // pas encore au niveau des gagnants
+    expect(fast9.action).toBe('roll');
   });
 });
