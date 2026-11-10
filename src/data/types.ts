@@ -25,7 +25,7 @@ export interface GameSet {
   key: string;
   number: number;
   label: string;
-  /** Objets, indexés par apiName en minuscules. */
+  /** Objets, indexés par identifiant canonique (voir canon()). */
   items: Record<string, Item>;
   champions: Champion[];
   traits: Trait[];

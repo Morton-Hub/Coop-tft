@@ -5,7 +5,7 @@ import type { Board } from '../src/data/types';
 import { analyze, autoArrange, bestHex, colOf, hex, mirror, rowOf } from '../src/engine/positioning';
 import { suggest } from '../src/engine/suggest';
 import { boardChampions, countTraits, traitStates } from '../src/engine/traits';
-import { aggregate, patchOf, signature, type RawMatch, type RawParticipant } from '../src/meta/aggregate';
+import { adjusted, aggregate, canon, patchOf, prettyId, signature, type RawMatch, type RawParticipant } from '../src/meta/aggregate';
 
 const id = (origin: string, cl: string) => `demo_${origin}_${cl}`;
 const champs = (...ids: string[]) => DEMO_SET.champions.filter((c) => ids.includes(c.id));
@@ -106,7 +106,7 @@ describe('cdragon', () => {
     expect(set.champions[0].icon).toBe(
       'https://raw.communitydragon.org/latest/game/assets/characters/tft99_c/hud/tile.tft_set99.png',
     );
-    expect(Object.keys(set.items)).toEqual(['tft_item_bloodthirster']);
+    expect(Object.keys(set.items)).toEqual(['bloodthirster']);
   });
   it('déduit le rôle de la portée, du rôle Riot ou de l’armure', () => {
     const base = { apiName: 'x', name: 'x', cost: 1 };
@@ -149,6 +149,21 @@ describe('meta', () => {
   it('lit le patch et la signature d’un plateau', () => {
     expect(patchOf(match('22').info.game_version)).toBe('16.22');
     expect(signature(board(1, 'mage')).map((t) => t.name)).toEqual(['Set_Mage', 'Set_Bastion']);
+  });
+
+  it('compare les ids sans préfixe, numéro de set ni « Item_ »', () => {
+    expect(canon('TFT18_Sejuani')).toBe('sejuani');
+    expect(canon('XX_18_Sejuani')).toBe('sejuani');
+    expect(canon('XX_Draven18')).toBe('draven');
+    expect(canon('TFT18_Akali_AD')).toBe(canon('XX_18_Akali_AD'));
+    expect(canon('TFT_Item_GargoyleStoneplate')).toBe(canon('XX_GargoyleStoneplate'));
+    expect(prettyId('XX_18_EmblemInvoker')).toBe('Emblem Invoker');
+  });
+
+  it('lisse les petits échantillons vers la moyenne', () => {
+    expect(adjusted(2.65, 17)).toBeGreaterThan(adjusted(3.82, 83) - 0.4);
+    expect(adjusted(2.65, 17)).toBeCloseTo(3.65, 2);
+    expect(adjusted(4.5, 5)).toBe(4.5);
   });
 
   it('regroupe par compo, ne garde que le dernier patch classé et classe par place moyenne', () => {

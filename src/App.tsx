@@ -5,7 +5,7 @@ import { COLS, ROWS, type Board, type Champion, type GameSet } from './data/type
 import { analyze, autoArrange, bestHex, hex, mirror, SCOUTING_CHECKLIST } from './engine/positioning';
 import { suggest } from './engine/suggest';
 import { boardChampions, traitStates } from './engine/traits';
-import type { MetaComp } from './meta/aggregate';
+import { canon, prettyId, type MetaComp } from './meta/aggregate';
 import { ago, loadMeta, type MetaResult } from './meta/load';
 import { useStored } from './storage';
 
@@ -66,9 +66,9 @@ export default function App() {
   }, []);
 
   const byId = useMemo(() => new Map(set.champions.map((c) => [c.id, c])), [set]);
-  // Les ids de l'API Riot n'ont pas toujours la même casse que ceux de Community Dragon.
-  const byLower = useMemo(() => new Map(set.champions.map((c) => [c.id.toLowerCase(), c])), [set]);
-  const traitName = useMemo(() => new Map(set.traits.map((t) => [t.id.toLowerCase(), t.name])), [set]);
+  // L'API Riot et Community Dragon n'écrivent pas les ids de la même façon : on compare leur forme canonique.
+  const byCanon = useMemo(() => new Map(set.champions.map((c) => [canon(c.id), c])), [set]);
+  const traitName = useMemo(() => new Map(set.traits.map((t) => [canon(t.id), t.name])), [set]);
   const units = useMemo(() => boardChampions(board, set), [board, set]);
   const traits = useMemo(() => traitStates(units, set), [units, set]);
   const tips = useMemo(() => analyze(board, set), [board, set]);
@@ -110,7 +110,7 @@ export default function App() {
     setSelected(null);
   };
   const compUnits = (c: MetaComp) =>
-    c.units.map((id) => byLower.get(id.toLowerCase())).filter((u): u is Champion => !!u);
+    c.units.map((id) => byCanon.get(canon(id))).filter((u): u is Champion => !!u);
   const loadComp = (c: MetaComp) => {
     const raw: Board = {};
     compUnits(c).forEach((u, i) => (raw[i] = u.id));
@@ -269,7 +269,7 @@ export default function App() {
                           <span className={`tier tier-${c.tier}`}>{c.tier}</span>
                           <span className="compbody">
                             <b>
-                              {c.traits.map((t) => `${t.units} ${traitName.get(t.id.toLowerCase()) ?? t.id}`).join(' · ')}
+                              {c.traits.map((t) => `${t.units} ${traitName.get(canon(t.id)) ?? prettyId(t.id)}`).join(' · ')}
                             </b>
                             <small>
                               Place moy. {c.avgPlacement.toFixed(2)} · Top 4 {Math.round(c.top4 * 100)} % · Victoire{' '}
@@ -281,11 +281,11 @@ export default function App() {
                               ))}
                             </span>
                             {c.carries.map((car) => {
-                              const u = byLower.get(car.id.toLowerCase());
+                              const u = byCanon.get(canon(car.id));
                               return (
                                 u && (
                                   <small key={car.id}>
-                                    {u.name} : {car.items.map((it) => set.items[it.toLowerCase()]?.name ?? it).join(', ')}
+                                    {u.name} : {car.items.map((it) => set.items[canon(it)]?.name ?? prettyId(it)).join(', ')}
                                   </small>
                                 )
                               );

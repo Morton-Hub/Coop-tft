@@ -53,7 +53,36 @@ export interface MetaData {
 
 const RANKED_QUEUE = 1100;
 
-export function patchOf(gameVersion: string): string {
+/**
+ * Forme canonique d'un identifiant de champion, trait ou objet. L'API Riot et Community Dragon
+ * n'écrivent pas toujours le même id (préfixe, numéro de set, « Item_ ») : on compare sans eux.
+ */
+export function canon(id: string): string {
+  return id
+    .toLowerCase()
+    .replace(/^[a-z]+\d*_/, '')
+    .replace(/^\d+_/, '')
+    .replace(/^item_/, '')
+    .replace(/[\d_]/g, '');
+}
+
+/** Libellé lisible de secours quand un id n'est pas trouvé dans les données du set. */
+export function prettyId(id: string): string {
+  return id
+    .replace(/^[A-Za-z]+\d*_/, '')
+    .replace(/^\d+_/, '')
+    .replace(/^Item_/, '')
+    .replace(/[\d_]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim();
+}
+
+/** Poids du lissage : une compo peu jouée est ramenée vers la moyenne (4,5) avant d'être classée. */
+const PRIOR_BOARDS = 20;
+export const adjusted = (avg: number, n: number) => (avg * n + 4.5 * PRIOR_BOARDS) / (n + PRIOR_BOARDS);
+
+export function patchOf(gameVersion: string | undefined): string {
+  if (!gameVersion) return '?';
   return (/Releases\/(\d+\.\d+)/.exec(gameVersion) ?? /(\d+\.\d+)/.exec(gameVersion))?.[1] ?? '?';
 }
 const patchNum = (p: string) => {
@@ -62,10 +91,10 @@ const patchNum = (p: string) => {
 };
 const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 
-function tierOf(avg: number): Tier {
-  if (avg <= 4.1) return 'S';
-  if (avg <= 4.35) return 'A';
-  if (avg <= 4.6) return 'B';
+function tierOf(adj: number): Tier {
+  if (adj <= 4.05) return 'S';
+  if (adj <= 4.3) return 'A';
+  if (adj <= 4.55) return 'B';
   return 'C';
 }
 
@@ -113,7 +142,7 @@ export function aggregate(
     }
   }
 
-  const minCount = Math.max(15, Math.ceil(boards * 0.01));
+  const minCount = Math.max(20, Math.ceil(boards * 0.015));
   const comps: MetaComp[] = [];
   for (const c of clusters.values()) {
     const n = c.boards.length;
@@ -146,7 +175,7 @@ export function aggregate(
 
     const avg = c.boards.reduce((s, p) => s + p.placement, 0) / n;
     comps.push({
-      tier: tierOf(avg),
+      tier: tierOf(adjusted(avg, n)),
       traits,
       units,
       carries,
@@ -157,7 +186,7 @@ export function aggregate(
       win: round(c.boards.filter((p) => p.placement === 1).length / n, 3),
     });
   }
-  comps.sort((a, b) => a.avgPlacement - b.avgPlacement || b.count - a.count);
+  comps.sort((a, b) => adjusted(a.avgPlacement, a.count) - adjusted(b.avgPlacement, b.count) || b.count - a.count);
 
   return {
     generatedAt: (opts.now ?? new Date()).toISOString(),
