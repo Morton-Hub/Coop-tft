@@ -4,6 +4,14 @@ Compagnon Teamfight Tactics pensé pour l'écran partagé d'un Galaxy Z Fold : l
 l'app de l'autre. Tu reproduis ton plateau en quelques taps et l'app t'indique en direct les
 synergies actives, les unités qui les complètent et les défauts de placement.
 
+## 📲 Télécharger
+
+**[Télécharger Coop TFT pour Android (APK)](https://github.com/Morton-Hub/Coop-tft/releases/latest/download/coop-tft.apk)**
+
+Ouvre ce lien depuis ton téléphone, autorise l'installation quand Android le demande, puis
+lance TFT et glisse Coop TFT en écran partagé. Toutes les versions :
+[page Releases](https://github.com/Morton-Hub/Coop-tft/releases).
+
 ## Ce que fait la v0.1
 
 | Fonction | Détail |
@@ -39,7 +47,7 @@ npm run build    # build de production dans dist/
 Chaque push construit un APK (workflow `Android APK`). Sur `main`, il est publié dans la
 release **latest** du repo :
 
-1. Sur le Fold, ouvrir la page *Releases* du repo et télécharger `coop-tft.apk`.
+1. Sur le Fold, ouvrir le [lien de téléchargement](https://github.com/Morton-Hub/Coop-tft/releases/latest/download/coop-tft.apk).
 2. Autoriser l'installation depuis le navigateur quand Android le demande, puis installer.
 3. Lancer TFT, puis glisser Coop TFT en écran partagé.
 
