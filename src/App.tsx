@@ -59,6 +59,7 @@ export default function App() {
   const traits = useMemo(() => traitStates(units, set), [units, set]);
   const tips = useMemo(() => analyze(board, set), [board, set]);
   const ideas = useMemo(() => suggest(units, set, level), [units, set, level]);
+  const topTip = tips.find((t) => t.level === 'warn') ?? tips[0];
   const full = units.length >= level;
 
   const palette = set.champions.filter(
@@ -162,10 +163,10 @@ export default function App() {
           </div>
           <div className="actions">
             <button onClick={() => setBoard(autoArrange(board, set))} disabled={!units.length}>
-              Placement auto
+              Auto-placer
             </button>
             <button onClick={() => setBoard(mirror(board))} disabled={!units.length}>
-              Inverser G/D
+              Inverser
             </button>
             <button onClick={removeSelected} disabled={selected === null}>
               Retirer
@@ -180,6 +181,13 @@ export default function App() {
               Vider
             </button>
           </div>
+          <button className={`tipbar ${topTip.level}`} onClick={() => setTab('advice')}>
+            {topTip.text}
+            {tips.length > 1 && <small> +{tips.length - 1}</small>}
+          </button>
+        </section>
+
+        <section className="traitcol">
           <div className="traits">
             {traits.map((t) => (
               <button

@@ -11,10 +11,10 @@ synergies actives, les unités qui les complètent et les défauts de placement.
 | Données du set | Champions, traits et paliers du set en cours, chargés depuis Community Dragon (français, repli anglais), mis en cache 12 h. Sélecteur de set. |
 | Plateau 4 × 7 | Tap sur une unité : elle se pose sur la meilleure case libre pour son rôle. Tap unité puis case : déplacement ou échange. |
 | Synergies | Compteur par trait avec paliers ; tap sur un trait pour filtrer les unités correspondantes. |
-| Conseils de placement | Alertes (carry trop avancé, tank au fond, pas de première ligne, carry non couvert, ligne arrière groupée), « Placement auto », « Inverser G/D ». |
+| Conseils de placement | Alertes (carry trop avancé, tank au fond, pas de première ligne, carry non couvert, ligne arrière groupée), « Auto-placer », « Inverser » (miroir gauche/droite). |
 | Pistes pour la suite | Plusieurs unités classées selon les paliers qu'elles activent ou rapprochent, filtrées selon ton niveau. |
 | Mes compos | Enregistre tes compos (par exemple recopiées d'une tier list) et recharge-les en un tap. |
-| PWA | Installable depuis Chrome (« Ajouter à l'écran d'accueil »), mise en page étroite ou large selon le volet. |
+| Écran partagé | Installable depuis Chrome (« Ajouter à l'écran d'accueil »). Volet large (TFT en haut, app en bas) : plateau, synergies et unités sur trois colonnes, sans défilement côté plateau. Volet étroit (côte à côte) : tout empilé. Le conseil prioritaire reste toujours visible sous le plateau. |
 
 ## Limite assumée : pas de lecture automatique de la partie
 

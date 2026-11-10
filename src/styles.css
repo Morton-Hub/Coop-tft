@@ -102,30 +102,116 @@ main {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 .left {
-  padding: 8px 10px;
+  padding: 8px 10px 4px;
+  flex: none;
+}
+.traitcol {
+  padding: 4px 10px 8px;
   flex: none;
 }
 .right {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: 280px;
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--line);
 }
-/* Volet large (jeu au-dessus, app en dessous sur le Fold déplié) : deux colonnes. */
-@media (min-width: 640px) {
+.right .panel {
+  flex-basis: 0;
+}
+.tipbar {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  width: 100%;
+  min-height: 0;
+  text-align: left;
+  font-size: 13px;
+  padding: 5px 8px;
+  border-left: 3px solid var(--c3);
+  border-radius: 0 6px 6px 0;
+}
+.tipbar.warn { border-left-color: var(--c6); }
+.tipbar.ok { border-left-color: var(--c2); }
+
+/*
+ * Volet large : cas principal en écran partagé haut/bas sur le Fold déplié
+ * (TFT en haut, Coop TFT en bas, ~850 × 300-420 dp). Trois colonnes, rien ne
+ * défile côté plateau : le plateau se dimensionne sur la hauteur disponible.
+ */
+@media (min-width: 600px) {
   main {
     flex-direction: row;
+    overflow: hidden;
   }
   .left {
-    width: min(48%, 520px);
+    width: min(44%, 520px);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    container-type: size;
+  }
+  /* Hauteur du plateau ≈ largeur / 2 : on réserve ~125px aux boutons et au conseil. */
+  .board {
+    width: min(100cqw, calc((100cqh - 125px) * 2));
+    min-width: 180px;
+  }
+  .traitcol {
+    width: 148px;
+    padding: 6px;
     overflow-y: auto;
+    border-left: 1px solid var(--line);
+  }
+  .traits {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .trait {
+    border-radius: 8px;
+    width: 100%;
+  }
+  .trait small {
+    margin-left: auto;
   }
   .right {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
     border-top: 0;
     border-left: 1px solid var(--line);
+  }
+}
+/* Volet bas (séparateur remonté) : en-tête et commandes resserrés. */
+@media (max-height: 480px) {
+  header {
+    padding: 3px 8px;
+  }
+  button,
+  select,
+  input {
+    min-height: 30px;
+    padding: 3px 8px;
+  }
+  .actions {
+    margin: 5px 0;
+  }
+  .tipbar {
+    -webkit-line-clamp: 1;
+  }
+  .side {
+    display: none;
+  }
+  .board {
+    width: min(100cqw, calc((100cqh - 90px) * 2));
+  }
+  .panel {
+    padding: 6px 8px 10px;
   }
 }
 
