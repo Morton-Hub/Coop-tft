@@ -65,6 +65,9 @@ export default function App() {
   const [held, setHeld] = useStored<Record<string, number>>('coop-tft:held', {});
   const [player, setPlayer] = useStored('coop-tft:player', '');
   const [autoFill, setAutoFill] = useStored('coop-tft:autofill', true);
+  const [autoMoney, setAutoMoney] = useStored('coop-tft:automoney', false);
+  const [samples, setSamples] = useStored<{ t: number; f: ScreenFrame; lu: Hud }[]>('coop-tft:samples', []);
+  const lastSample = useRef(0);
   const [autoRead, setAutoRead] = useState<Hud>({});
   const lastHud = useRef<Hud>({});
   const [tab, setTab] = useState<Tab>('meta');
@@ -172,17 +175,26 @@ export default function App() {
     for (const k of ['stage', 'level', 'gold', 'hp'] as const)
       if (hud[k] !== undefined && hud[k] === prev[k]) (stable as Record<string, unknown>)[k] = hud[k];
     setAutoRead(stable);
+    // Relevés automatiques : une image de phase d'achat par minute, les 5 dernières sont gardées
+    // pour pouvoir régler la lecture après la partie sans rien faire pendant.
+    if (shopRead.shop.length >= 3 && Date.now() - lastSample.current > 60000) {
+      lastSample.current = Date.now();
+      const { at: _at, ...f } = frame;
+      setSamples([...samples.slice(-4), { t: Date.now(), f, lu: hud }]);
+    }
     if (!autoFill) return;
     if (stable.level !== undefined && stable.level !== level) setLevel(stable.level);
     const next = {
       stage: stable.stage ?? game.stage,
-      gold: stable.gold ?? game.gold,
-      hp: stable.hp !== undefined && stable.hp >= 1 ? stable.hp : game.hp,
+      // Or et PV : lecture encore peu fiable, appliquée seulement si l'option est activée.
+      gold: autoMoney ? (stable.gold ?? game.gold) : game.gold,
+      hp: autoMoney && stable.hp !== undefined && stable.hp >= 1 ? stable.hp : game.hp,
     };
     if (next.stage !== game.stage || next.gold !== game.gold || next.hp !== game.hp) setGame(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame]);
-  const auto = (k: keyof Hud) => reading === 'on' && autoFill && autoRead[k] !== undefined;
+  const auto = (k: keyof Hud) =>
+    reading === 'on' && autoFill && autoRead[k] !== undefined && (autoMoney || (k !== 'gold' && k !== 'hp'));
 
   const [copied, setCopied] = useState(false);
   const copyDiagnostic = async () => {
@@ -200,6 +212,30 @@ export default function App() {
       await navigator.clipboard.writeText(text);
     } catch {
       // Repli pour les WebView sans accès direct au presse-papiers.
+      const area = document.createElement('textarea');
+      area.value = text;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copySamples = async () => {
+    const text = JSON.stringify({
+      joueur: player,
+      releves: samples.map((x) => ({
+        w: x.f.width,
+        h: x.f.height,
+        lu: x.lu,
+        lignes: x.f.lines.map((l) => [l.text, l.x, l.y, l.w, l.h]),
+      })),
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
       const area = document.createElement('textarea');
       area.value = text;
       document.body.appendChild(area);
@@ -761,6 +797,11 @@ export default function App() {
                   <button onClick={toggleReading} disabled={reading === 'starting'}>
                     {reading === 'off' ? "Démarrer la lecture de l'écran" : 'Arrêter la lecture'}
                   </button>
+                  {samples.length > 0 && (
+                    <button onClick={copySamples}>
+                      {copied ? 'Copié ✓' : `Copier les relevés de la partie (${samples.length})`}
+                    </button>
+                  )}
                   <p className="muted">
                     Expérimental. Android demande quoi partager : choisis l'écran entier, ou l'application TFT. L'app
                     lit le texte affiché environ toutes les 1,5 s, sur l'appareil, sans rien envoyer. Riot n'autorise
@@ -776,7 +817,11 @@ export default function App() {
                     <>
                       <label className="check">
                         <input type="checkbox" checked={autoFill} onChange={(e) => setAutoFill(e.target.checked)} />
-                        Remplir automatiquement manche, niveau, or et PV
+                        Remplir automatiquement la manche et le niveau
+                      </label>
+                      <label className="check">
+                        <input type="checkbox" checked={autoMoney} onChange={(e) => setAutoMoney(e.target.checked)} />
+                        Remplir aussi l'or et les PV (lecture en cours de réglage)
                       </label>
                       <p className="readout">
                         Lu à l'écran : manche <b>{autoRead.stage ?? '—'}</b> · niveau <b>{autoRead.level ?? '—'}</b> · or{' '}
