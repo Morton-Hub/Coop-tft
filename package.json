@@ -13,6 +13,7 @@
     "@capacitor/android": "^8.6.0",
     "@capacitor/cli": "^8.6.0",
     "@capacitor/core": "^8.6.0",
+    "coop-screen-reader": "file:plugins/screen-reader",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

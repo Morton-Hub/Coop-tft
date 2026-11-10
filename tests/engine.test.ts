@@ -4,6 +4,7 @@ import { DEMO_SET } from '../src/data/demo';
 import type { Board } from '../src/data/types';
 import { analyze, autoArrange, bestHex, colOf, hex, mirror, rowOf } from '../src/engine/positioning';
 import { suggest } from '../src/engine/suggest';
+import { normText, readShop } from '../src/screen/match';
 import { boardChampions, countTraits, traitStates } from '../src/engine/traits';
 import { adjusted, aggregate, canon, patchOf, prettyId, signature, type RawMatch, type RawParticipant } from '../src/meta/aggregate';
 
@@ -195,5 +196,39 @@ describe('meta sans numéro de patch', () => {
     expect(patchOf('TFT Unreal Version ?.?.?.?')).toBe('?');
     expect(patchOf(undefined)).toBe('?');
     expect(aggregate([], {}).patch).toBe('');
+  });
+});
+
+describe('lecture de l’écran', () => {
+  const champ = (name: string) => ({ id: name, name, cost: 1, traits: ['X'], range: 1, role: 'melee' as const });
+  const set = ['Rek\'Sai', 'Ezreal', 'Séjuani', 'Ahri', 'Zyra', 'Teemo'].map(champ);
+  const line = (text: string, x: number, y: number) => ({ text, x, y, w: 100, h: 30 });
+
+  it('normalise casse, accents, chiffres et ponctuation', () => {
+    expect(normText('Rek\'Sai 3')).toBe('reksai');
+    expect(normText('SÉJUANI')).toBe('sejuani');
+  });
+
+  it('prend pour boutique la rangée qui aligne le plus de noms, de gauche à droite', () => {
+    const frame = {
+      width: 2000,
+      height: 1000,
+      lines: [
+        line('Teemo', 900, 300), // nom isolé ailleurs à l'écran (infobulle)
+        line('Niveau 6', 50, 880),
+        line('ZYRA', 1300, 905),
+        line('Ezreal', 500, 900),
+        line('Rek\'Sai', 900, 910),
+        line('Sejuani 4', 100, 895),
+        line('Acheter XP', 50, 950),
+      ],
+    };
+    const res = readShop(frame, set);
+    expect(res.shop.map((c) => c.name)).toEqual(['Séjuani', 'Ezreal', 'Rek\'Sai', 'Zyra']);
+    expect(res.seen).toHaveLength(5);
+  });
+
+  it('ne déclare pas de boutique sur un seul nom', () => {
+    expect(readShop({ width: 100, height: 100, lines: [line('Ahri', 1, 1)] }, set).shop).toEqual([]);
   });
 });

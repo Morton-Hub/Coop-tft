@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadSet } from './data/cdragon';
 import { DEMO_SET } from './data/demo';
 import { COLS, ROWS, type Board, type Champion, type GameSet } from './data/types';
@@ -7,9 +7,11 @@ import { suggest } from './engine/suggest';
 import { boardChampions, traitStates } from './engine/traits';
 import { canon, prettyId, type MetaComp } from './meta/aggregate';
 import { ago, loadMeta, type MetaResult } from './meta/load';
+import { readShop, type ScreenFrame } from './screen/match';
+import { screenReaderAvailable, startScreenReader } from './screen/reader';
 import { useStored } from './storage';
 
-type Tab = 'meta' | 'units' | 'advice' | 'comps';
+type Tab = 'meta' | 'units' | 'advice' | 'comps' | 'screen';
 interface SavedComp {
   name: string;
   setKey: string;
@@ -41,6 +43,10 @@ export default function App() {
   const [traitFilter, setTraitFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [costFilter, setCostFilter] = useState<number | null>(null);
+  const [frame, setFrame] = useState<(ScreenFrame & { at: number }) | null>(null);
+  const [reading, setReading] = useState<'off' | 'starting' | 'on'>('off');
+  const [readError, setReadError] = useState('');
+  const stopReader = useRef<(() => Promise<void>) | null>(null);
 
   const load = (force: boolean) => {
     setStatus('loading');
@@ -73,6 +79,41 @@ export default function App() {
   const traits = useMemo(() => traitStates(units, set), [units, set]);
   const tips = useMemo(() => analyze(board, set), [board, set]);
   const ideas = useMemo(() => suggest(units, set, level), [units, set, level]);
+  const shopRead = useMemo(() => (frame ? readShop(frame, set.champions) : null), [frame, set]);
+  // Unités de la boutique qui font partie du plan (le plateau chargé) ou qui en complètent une synergie.
+  const planIds = useMemo(() => new Set(Object.values(board)), [board]);
+  const ideaIds = useMemo(() => new Set(ideas.map((s) => s.champion.id)), [ideas]);
+  const toBuy = shopRead?.shop.filter((c) => planIds.has(c.id)) ?? [];
+
+  const toggleReading = async () => {
+    setReadError('');
+    if (reading !== 'off') {
+      await stopReader.current?.().catch(() => {});
+      stopReader.current = null;
+      setReading('off');
+      setFrame(null);
+      return;
+    }
+    setReading('starting');
+    try {
+      stopReader.current = await startScreenReader(
+        (f) => {
+          setFrame({ ...f, at: Date.now() });
+          setReading('on');
+        },
+        (reason) => {
+          stopReader.current = null;
+          setReading('off');
+          setReadError(reason);
+        },
+      );
+      setReading('on');
+    } catch (e) {
+      setReading('off');
+      setReadError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const topTip = tips.find((t) => t.level === 'warn') ?? tips[0];
   const full = units.length >= level;
 
@@ -197,10 +238,16 @@ export default function App() {
               Vider
             </button>
           </div>
-          <button className={`tipbar ${topTip.level}`} onClick={() => setTab('advice')}>
-            {topTip.text}
-            {tips.length > 1 && <small> +{tips.length - 1}</small>}
-          </button>
+          {reading === 'on' && toBuy.length > 0 ? (
+            <button className="tipbar buy" onClick={() => setTab('screen')}>
+              Boutique : achète {[...new Set(toBuy.map((c) => c.name))].join(', ')}
+            </button>
+          ) : (
+            <button className={`tipbar ${topTip.level}`} onClick={() => setTab('advice')}>
+              {topTip.text}
+              {tips.length > 1 && <small> +{tips.length - 1}</small>}
+            </button>
+          )}
         </section>
 
         <section className="traitcol">
@@ -230,6 +277,7 @@ export default function App() {
                 ['units', 'Unités'],
                 ['advice', `Conseils${tips.some((t) => t.level === 'warn') ? ' ⚠' : ''}`],
                 ['comps', 'Perso'],
+                ['screen', reading === 'on' ? 'Écran ●' : 'Écran'],
               ] as [Tab, string][]
             ).map(([k, label]) => (
               <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
@@ -360,6 +408,64 @@ export default function App() {
                   <li key={t}>{t}</li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {tab === 'screen' && (
+            <div className="panel">
+              {!screenReaderAvailable() ? (
+                <p className="muted">La lecture de l'écran n'existe que dans l'application Android.</p>
+              ) : (
+                <>
+                  <button onClick={toggleReading} disabled={reading === 'starting'}>
+                    {reading === 'off' ? "Démarrer la lecture de l'écran" : 'Arrêter la lecture'}
+                  </button>
+                  <p className="muted">
+                    Expérimental. Android demande quoi partager : choisis l'écran entier, ou l'application TFT. L'app
+                    lit le texte affiché environ toutes les 1,5 s, sur l'appareil, sans rien envoyer. Riot n'autorise
+                    pas les outils qui lisent la partie : à toi de décider où tu l'utilises.
+                  </p>
+                  {readError && <p className="tips"><span className="warn">{readError}</span></p>}
+                  {reading !== 'off' && (
+                    <>
+                      <h3>Boutique lue</h3>
+                      {shopRead?.shop.length ? (
+                        <div className="ideas">
+                          {shopRead.shop.map((c, k) => (
+                            <div
+                              key={k}
+                              className={`idea shopcard ${planIds.has(c.id) ? 'plan' : ideaIds.has(c.id) ? 'fit' : ''}`}
+                            >
+                              <Icon c={c} />
+                              <span>
+                                <b>{c.name}</b>
+                                <small>
+                                  {planIds.has(c.id)
+                                    ? 'dans ta compo'
+                                    : ideaIds.has(c.id)
+                                      ? 'complète une synergie'
+                                      : 'hors compo'}
+                                </small>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="muted">Aucune boutique repérée pour l'instant.</p>
+                      )}
+                      <h3>
+                        Texte brut <small>({frame ? `${frame.lines.length} lignes, image ${frame.width}×${frame.height}` : 'en attente de la première image'})</small>
+                      </h3>
+                      <p className="rawtext">
+                        {frame?.lines
+                          .slice(0, 60)
+                          .map((l) => l.text)
+                          .join(' · ')}
+                      </p>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           )}
 

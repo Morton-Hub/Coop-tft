@@ -1,0 +1,11 @@
+{
+  "name": "coop-screen-reader",
+  "version": "0.0.1",
+  "description": "Plugin Capacitor local : capture d'écran (MediaProjection) et lecture du texte (ML Kit).",
+  "main": "index.js",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  }
+}

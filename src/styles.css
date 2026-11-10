@@ -527,3 +527,33 @@ nav button.on {
 .tier-S { background: #ff6b6b; }
 .tier-A { background: #f0b84a; }
 .tier-B { background: #6fcf7f; }
+
+.tipbar.buy {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+.shopcard {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  opacity: 0.55;
+}
+.shopcard.fit {
+  opacity: 1;
+}
+.shopcard.plan {
+  opacity: 1;
+  border-color: var(--accent);
+  background: #2f2a16;
+}
+.rawtext {
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-word;
+  margin: 0;
+}
+nav button {
+  padding: 6px 4px;
+  white-space: nowrap;
+}
