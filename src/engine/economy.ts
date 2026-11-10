@@ -1,8 +1,8 @@
 import type { Champion, GameSet } from '../data/types';
 
 /*
- * Tables standard de TFT. Elles bougent légèrement d'un set à l'autre : les pourcentages
- * affichés sont des ordres de grandeur, pas des valeurs exactes du patch.
+ * Tables de TFT. Les niveaux 3, 4, 8 et 9 ont été recoupés avec des sources Set 18 ; les niveaux
+ * 5 à 7 et 10, ainsi que les coûts de niveau, sont les valeurs classiques, non vérifiées pour ce set.
  */
 /** Probabilité (en %) qu'une case de boutique propose une unité de coût 1 à 5, par niveau. */
 export const SHOP_ODDS: Record<number, number[]> = {
@@ -13,8 +13,8 @@ export const SHOP_ODDS: Record<number, number[]> = {
   5: [45, 33, 20, 2, 0],
   6: [30, 40, 25, 5, 0],
   7: [19, 30, 40, 10, 1],
-  8: [17, 24, 32, 24, 3],
-  9: [15, 18, 25, 30, 12],
+  8: [15, 20, 32, 30, 3],
+  9: [10, 17, 25, 33, 15],
   10: [5, 10, 20, 40, 25],
 };
 /** Or nécessaire pour passer au niveau suivant en partant de 0 XP (4 or = 4 XP). */
@@ -41,8 +41,12 @@ export interface Situation {
 export interface Plan {
   /** Unités recherchées (celles de la compo visée). */
   targets: Champion[];
-  /** Coût du carry principal : il fixe le niveau où dépenser. */
+  /** Coût du carry principal : il fixe le niveau où dépenser, faute de mieux. */
   carryCost: number;
+  /** Niveau médian des top 4 avec cette compo, quand la méta le fournit. */
+  keyLevel?: number;
+  /** Compo de reroll constatée dans les parties, quand la méta le fournit. */
+  reroll?: boolean;
 }
 export type Action = 'save' | 'level' | 'roll' | 'allin';
 export interface Advice {
@@ -75,8 +79,9 @@ const pct = (p: number) => `${Math.round(p * 100)} %`;
 
 export function advise(sit: Situation, plan: Plan, set: GameSet): Advice {
   const { level, gold, hp, stage } = sit;
-  const key = keyLevel(plan.carryCost);
-  const reroll = plan.carryCost <= 2;
+  const reroll = plan.reroll ?? plan.carryCost <= 2;
+  // Une compo de reroll se joue au niveau du coût de son carry ; sinon on vise le niveau des gagnants.
+  const key = reroll ? keyLevel(plan.carryCost) : (plan.keyLevel ?? keyLevel(plan.carryCost));
   const levelCost = GOLD_TO_LEVEL[level];
   const canLevel = levelCost !== undefined && gold >= levelCost;
   const reasons: string[] = [];
@@ -90,8 +95,12 @@ export function advise(sit: Situation, plan: Plan, set: GameSet): Advice {
   }
   reasons.push(
     reroll
-      ? `Carry à ${plan.carryCost} PO : compo de reroll, on reste au niveau ${key} pour le monter 3 étoiles.`
-      : `Carry à ${plan.carryCost} PO : c'est au niveau ${key} qu'on le trouve le mieux.`,
+      ? plan.reroll
+        ? `Chez les top 4, le carry est le plus souvent 3 étoiles : compo de reroll, on reste au niveau ${key}.`
+        : `Carry à ${plan.carryCost} PO : compo de reroll, on reste au niveau ${key} pour le monter 3 étoiles.`
+      : plan.keyLevel
+        ? `Les joueurs qui font top 4 avec cette compo finissent niveau ${plan.keyLevel}.`
+        : `Carry à ${plan.carryCost} PO : c'est au niveau ${key} qu'on le trouve le mieux.`,
   );
   const toNext = 10 - (gold % 10);
   const interestNote =

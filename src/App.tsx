@@ -120,8 +120,12 @@ export default function App() {
   }, [plan, byCanon, units]);
   const situation: Situation = { level, ...game };
   const econ = useMemo(
-    () => (carry ? advise({ level, ...game }, { targets: [carry], carryCost: carry.cost }, set) : null),
-    [level, game, units, carry, set],
+    () => (carry ? advise(
+            { level, ...game },
+            { targets: [carry], carryCost: carry.cost, keyLevel: plan?.level, reroll: plan?.reroll },
+            set,
+          ) : null),
+    [level, game, units, carry, set, plan],
   );
   const itemNeeds = useMemo(
     () =>
@@ -590,9 +594,18 @@ export default function App() {
                               Place moy. {c.avgPlacement.toFixed(2)} · Top 4 {Math.round(c.top4 * 100)} % · Victoire{' '}
                               {Math.round(c.win * 100)} % · Jouée {(c.pickRate * 100).toFixed(1)} %
                             </small>
+                            {(c.level || c.reroll) && (
+                              <span className="badges">
+                                {c.level && <em>Niveau {c.level}</em>}
+                                {c.reroll && <em className="reroll">Reroll</em>}
+                                {c.core?.length ? <em className="corekey">◆ unités clés</em> : null}
+                              </span>
+                            )}
                             <span className="compunits">
                               {compUnits(c).map((u) => (
-                                <Icon key={u.id} c={u} />
+                                <span key={u.id} className={c.core?.some((id) => canon(id) === canon(u.id)) ? 'core' : ''}>
+                                  <Icon c={u} />
+                                </span>
                               ))}
                             </span>
                             {c.carries.map((car) => {

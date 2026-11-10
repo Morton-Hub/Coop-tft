@@ -128,9 +128,10 @@ describe('meta', () => {
     kind === 'mage'
       ? {
           placement,
+          level: placement <= 2 ? 9 : 8,
           traits: [trait('Set_Mage', 6, 3), trait('Set_Bastion', 2, 1), trait('Set_Unique', 1, 4), trait('Set_Off', 1, 0)],
           units: [
-            { character_id: 'M_Carry', itemNames: ['Item_A', 'Item_B', 'Item_C'] },
+            { character_id: 'M_Carry', itemNames: ['Item_A', 'Item_B', 'Item_C'], tier: 2 },
             ...['M1', 'M2', 'M3', 'M4', 'M5', 'M6'].map((character_id) => ({ character_id })),
             { character_id: placement % 2 ? 'M_Flex1' : 'M_Flex2' },
           ],
@@ -191,6 +192,10 @@ describe('meta', () => {
     expect(mage.units).toEqual(['M_Carry', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M_Flex1', 'M_Flex2']);
     expect(mage.carries).toEqual([{ id: 'M_Carry', items: ['Item_A', 'Item_B', 'Item_C'] }]);
     expect(tank).toMatchObject({ tier: 'C', avgPlacement: 6.5, top4: 0, carries: [] });
+    // Top 4 des mages : niveaux 9, 9, 8, 8 -> médiane 9 ; carry 2 étoiles -> pas une compo de reroll.
+    expect(mage.level).toBe(9);
+    expect(mage.reroll).toBe(false);
+    expect(tank.level).toBeUndefined();
   });
 });
 
@@ -349,5 +354,41 @@ describe('mise à jour', () => {
     expect(isNewer('bbb', release)).toBe(false);
     expect(isNewer('', release)).toBe(false); // build local
     expect(isNewer('aaa', { target_commitish: 'bbb', assets: [] })).toBe(false); // APK pas encore déposé
+  });
+});
+
+describe('faits tirés des parties', () => {
+  const b = (placement: number, star: number, withKey: boolean): RawParticipant => ({
+    placement,
+    level: 6,
+    traits: [{ name: 'T_A', num_units: 4, style: 2, tier_current: 1 }, { name: 'T_B', num_units: 2, style: 1, tier_current: 1 }],
+    units: [
+      { character_id: 'Carry', tier: star, itemNames: ['I1', 'I2', 'I3'] },
+      ...['U1', 'U2', 'U3', 'U4', 'U5'].map((character_id) => ({ character_id })),
+      ...(withKey ? [{ character_id: 'Key' }] : [{ character_id: 'Filler' }]),
+    ],
+  });
+  const games: RawMatch[] = Array.from({ length: 20 }, () => ({
+    info: {
+      queue_id: 1100,
+      tft_set_number: 18,
+      participants: [1, 2, 3, 4, 5, 6, 7, 8].map((p) => b(p, p <= 4 ? 3 : 2, p <= 4)),
+    },
+  }));
+  it('détecte le reroll, le niveau des gagnants et les unités clés', () => {
+    const [comp] = aggregate(games).comps;
+    expect(comp.reroll).toBe(true);
+    expect(comp.level).toBe(6);
+    expect(comp.core).toEqual(['Key']);
+  });
+  it('le conseil suit ces faits plutôt que la règle par coût', () => {
+    const carry = DEMO_SET.champions.find((c) => c.cost === 4)!;
+    const base = { level: 7, gold: 60, hp: 90, stage: '4-1' };
+    // Carry à 4 PO : la règle dirait « niveau 8 », mais les parties montrent une compo de reroll.
+    const a = advise(base, { targets: [carry], carryCost: 4, reroll: true }, DEMO_SET);
+    expect(a.reasons.join(' ')).toContain('3 étoiles');
+    const fast9 = advise({ ...base, level: 8 }, { targets: [carry], carryCost: 4, keyLevel: 9 }, DEMO_SET);
+    expect(fast9.reasons.join(' ')).toContain('finissent niveau 9');
+    expect(fast9.action).not.toBe('roll'); // pas encore au niveau des gagnants
   });
 });

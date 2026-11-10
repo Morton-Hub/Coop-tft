@@ -6,6 +6,8 @@
 export interface RawUnit {
   character_id: string;
   itemNames?: string[];
+  /** Niveau d'étoiles (1 à 3). */
+  tier?: number;
 }
 export interface RawTraitEntry {
   name: string;
@@ -15,6 +17,8 @@ export interface RawTraitEntry {
 }
 export interface RawParticipant {
   placement: number;
+  /** Niveau du joueur en fin de partie. */
+  level?: number;
   traits: RawTraitEntry[];
   units: RawUnit[];
 }
@@ -38,6 +42,12 @@ export interface MetaComp {
   /** Unités les plus jouées dans cette compo (ids Riot). */
   units: string[];
   carries: { id: string; items: string[] }[];
+  /** Niveau médian des joueurs qui finissent top 4 avec cette compo. */
+  level?: number;
+  /** Vrai si le carry principal est le plus souvent 3 étoiles chez les top 4 : compo de reroll. */
+  reroll?: boolean;
+  /** Unités nettement plus présentes chez les top 4 que chez les autres : à ne pas manquer. */
+  core?: string[];
   count: number;
   pickRate: number;
   avgPlacement: number;
@@ -180,12 +190,41 @@ export function aggregate(
       .map(([id, list]) => ({ id, units: list.sort((a, b) => a - b)[Math.floor(list.length / 2)] }))
       .sort((a, b) => b.units - a.units || a.id.localeCompare(b.id));
 
+    // Faits tirés des plateaux gagnants (top 4), plutôt que des règles générales.
+    const top = c.boards.filter((p) => p.placement <= 4);
+    const bottom = c.boards.filter((p) => p.placement > 4);
+    const levels = top.map((p) => p.level ?? 0).filter(Boolean).sort((a, b) => a - b);
+    const level = levels.length >= 5 ? levels[Math.floor(levels.length / 2)] : undefined;
+
+    let reroll: boolean | undefined;
+    const main = carries[0]?.id;
+    if (main && top.length >= 5) {
+      const withMain = top.filter((p) => p.units.some((u) => u.character_id === main));
+      const starred = withMain.filter((p) => p.units.some((u) => u.character_id === main && (u.tier ?? 0) >= 3));
+      if (withMain.length >= 5) reroll = starred.length / withMain.length >= 0.4;
+    }
+
+    let keyUnits: string[] | undefined;
+    if (top.length >= 10 && bottom.length >= 10) {
+      const share = (group: RawParticipant[], id: string) =>
+        group.filter((p) => p.units.some((u) => u.character_id === id)).length / group.length;
+      keyUnits = units
+        .map((id) => ({ id, top: share(top, id), lift: share(top, id) - share(bottom, id) }))
+        .filter((u) => u.top >= 0.6 && u.lift >= 0.15)
+        .sort((a, b) => b.lift - a.lift)
+        .slice(0, 3)
+        .map((u) => u.id);
+    }
+
     const avg = c.boards.reduce((s, p) => s + p.placement, 0) / n;
     comps.push({
       tier: tierOf(adjusted(avg, n)),
       traits,
       units,
       carries,
+      ...(level ? { level } : {}),
+      ...(reroll !== undefined ? { reroll } : {}),
+      ...(keyUnits?.length ? { core: keyUnits } : {}),
       count: n,
       pickRate: round(n / boards, 3),
       avgPlacement: round(avg),

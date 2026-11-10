@@ -839,3 +839,17 @@ nav button {
   margin: 6px 0;
   font-size: 13px;
 }
+
+.badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.badges em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--line);
+}
+.badges .reroll { background: #5b3fa8; }
+.badges .corekey { background: none; color: var(--accent); padding-left: 0; }
+.compunits .core .icon { box-shadow: 0 0 0 2px var(--accent); }
+.compunits span { display: inline-flex; }
