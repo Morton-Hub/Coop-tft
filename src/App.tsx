@@ -9,7 +9,7 @@ import { suggest } from './engine/suggest';
 import { boardChampions, traitStates } from './engine/traits';
 import { canon, prettyId, type MetaComp } from './meta/aggregate';
 import { ago, loadMeta, type MetaResult } from './meta/load';
-import { readShop, type ScreenFrame } from './screen/match';
+import { detectGame, readShop, type ScreenFrame } from './screen/match';
 import { screenReaderAvailable, startScreenReader } from './screen/reader';
 import { useStored } from './storage';
 import { APK_URL, updateAvailable } from './update';
@@ -137,6 +137,16 @@ export default function App() {
   const hpTone = game.hp <= 30 ? 'red' : game.hp <= 55 ? 'orange' : 'green';
 
   const shopRead = useMemo(() => (frame ? readShop(frame, set.champions) : null), [frame, set]);
+  const gameState = useMemo(() => (frame ? detectGame(frame, set.champions) : 'none'), [frame, set]);
+  // Pastille : grise = lecture arrêtée, orange = lecture active sans jeu visible, verte = TFT détecté.
+  const dot =
+    reading !== 'on'
+      ? { cls: 'off', label: 'Lecture arrêtée' }
+      : gameState === 'game'
+        ? { cls: 'game', label: 'Partie détectée' }
+        : gameState === 'lobby'
+          ? { cls: 'game', label: 'TFT détecté (menu)' }
+          : { cls: 'wait', label: 'Jeu non détecté' };
   // Unités de la boutique qui font partie du plan (le plateau chargé) ou qui en complètent une synergie.
   const planIds = useMemo(() => new Set(Object.values(board)), [board]);
   const ideaIds = useMemo(() => new Set(ideas.map((s) => s.champion.id)), [ideas]);
@@ -227,6 +237,7 @@ export default function App() {
   return (
     <div className={`app mode-${mode}`}>
       <header>
+        <button className={`dot ${dot.cls}`} onClick={() => setTab('screen')} title={dot.label} aria-label={dot.label} />
         <strong>Coop TFT</strong>
         <span className="setname">
           {set.label}
@@ -685,6 +696,11 @@ export default function App() {
                     lit le texte affiché environ toutes les 1,5 s, sur l'appareil, sans rien envoyer. Riot n'autorise
                     pas les outils qui lisent la partie : à toi de décider où tu l'utilises.
                   </p>
+                  {reading !== 'off' && (
+                    <p className="detect">
+                      <span className={`dot ${dot.cls}`} /> {dot.label}
+                    </p>
+                  )}
                   {readError && <p className="tips"><span className="warn">{readError}</span></p>}
                   {reading !== 'off' && (
                     <>

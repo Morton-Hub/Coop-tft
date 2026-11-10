@@ -49,3 +49,18 @@ export function readShop(frame: ScreenFrame, champions: Champion[]): ShopRead {
   const shop = best.length >= 2 ? best.slice().sort((a, b) => a.x - b.x).map((h) => h.c) : [];
   return { shop, seen: [...new Set(hits.map((h) => h.c))] };
 }
+
+export type GameState = 'none' | 'lobby' | 'game';
+/** Textes du menu principal de TFT (interface en français ou en anglais). */
+const LOBBY_WORDS = ['jouer', 'boutique', 'passedecombat', 'equipements', 'play', 'battlepass', 'store'];
+
+/**
+ * Dit si TFT est visible à l'écran : en partie dès qu'une boutique ou deux noms de champions
+ * sont lus, au menu si au moins deux libellés du menu principal apparaissent.
+ */
+export function detectGame(frame: ScreenFrame, champions: Champion[]): GameState {
+  const read = readShop(frame, champions);
+  if (read.shop.length || read.seen.length >= 2) return 'game';
+  const texts = new Set(frame.lines.map((l) => normText(l.text)));
+  return LOBBY_WORDS.filter((w) => texts.has(w)).length >= 2 ? 'lobby' : 'none';
+}

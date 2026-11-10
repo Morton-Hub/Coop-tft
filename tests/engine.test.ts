@@ -6,7 +6,7 @@ import { analyze, autoArrange, bestHex, colOf, hex, mirror, rowOf } from '../src
 import { advise, expectedLevel, hitChance, interest, keyLevel } from '../src/engine/economy';
 import { buildable, componentPriority, resolveItems } from '../src/engine/items';
 import { suggest } from '../src/engine/suggest';
-import { normText, readShop } from '../src/screen/match';
+import { detectGame, normText, readShop } from '../src/screen/match';
 import { isNewer } from '../src/update';
 import { boardChampions, countTraits, traitStates } from '../src/engine/traits';
 import { adjusted, aggregate, canon, patchOf, prettyId, signature, type RawMatch, type RawParticipant } from '../src/meta/aggregate';
@@ -229,6 +229,13 @@ describe('lecture de l’écran', () => {
     const res = readShop(frame, set);
     expect(res.shop.map((c) => c.name)).toEqual(['Séjuani', 'Ezreal', 'Rek\'Sai', 'Zyra']);
     expect(res.seen).toHaveLength(5);
+  });
+
+  it('distingue partie, menu et autre écran', () => {
+    const f = (...texts: string[]) => ({ width: 2000, height: 1000, lines: texts.map((t, i) => line(t, i * 300, 900)) });
+    expect(detectGame(f('Ezreal', 'ZYRA', 'Ahri'), set)).toBe('game');
+    expect(detectGame(f('BOUTIQUE', 'ÉQUIPEMENTS', 'JOUER', 'Notes de patch 18.6'), set)).toBe('lobby');
+    expect(detectGame(f('Paramètres', 'Wi-Fi', 'Jouer'), set)).toBe('none');
   });
 
   it('ne déclare pas de boutique sur un seul nom', () => {
