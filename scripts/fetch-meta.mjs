@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { aggregate } from '../src/meta/aggregate.ts';
 
-const KEY = process.env.RIOT_API_KEY;
+const KEY = (process.env.RIOT_API_KEY || '').trim();
 const PLATFORM = process.env.RIOT_PLATFORM || 'euw1';
 const REGION = process.env.RIOT_REGION || 'europe';
 const PLAYERS = Number(process.env.META_PLAYERS || 45);
@@ -15,6 +15,10 @@ if (!KEY) {
   console.log('::warning::Secret RIOT_API_KEY absent : méta non générée.');
   process.exit(0);
 }
+
+// Diagnostic sans divulguer la clé : une clé Riot fait 42 caractères, « RGAPI- » suivi d'un UUID.
+const wellFormed = /^RGAPI-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(KEY);
+console.log(`Clé : ${KEY.length} caractères, format ${wellFormed ? 'correct' : 'INATTENDU'}`);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let last = 0;
@@ -33,8 +37,10 @@ async function riot(host, path) {
     }
     if (res.ok) return res.json();
     if (res.status === 404) return null;
-    if (res.status === 401 || res.status === 403)
-      throw new Error(`Clé Riot refusée (HTTP ${res.status}) : elle est invalide ou expirée.`);
+    if (res.status === 401 || res.status === 403) {
+      const body = (await res.text().catch(() => '')).slice(0, 200);
+      throw new Error(`Clé Riot refusée (HTTP ${res.status}) sur ${path} : ${body}`);
+    }
     const wait = Number(res.headers.get('retry-after')) || 10;
     console.log(`HTTP ${res.status} sur ${path}, attente ${wait}s`);
     await sleep(wait * 1000);
