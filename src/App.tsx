@@ -9,7 +9,7 @@ import { suggest } from './engine/suggest';
 import { boardChampions, traitStates } from './engine/traits';
 import { canon, prettyId, type MetaComp } from './meta/aggregate';
 import { ago, loadMeta, type MetaResult } from './meta/load';
-import { detectGame, readShop, type ScreenFrame } from './screen/match';
+import { detectGame, readHud, readPlayerName, readShop, type Hud, type ScreenFrame } from './screen/match';
 import { screenReaderAvailable, startScreenReader } from './screen/reader';
 import { useStored } from './storage';
 import { APK_URL, updateAvailable } from './update';
@@ -63,6 +63,10 @@ export default function App() {
   const [plan, setPlan] = useStored<MetaComp | null>('coop-tft:plan', null);
   const [game, setGame] = useStored('coop-tft:game', { stage: '2-1', gold: 10, hp: 100 });
   const [held, setHeld] = useStored<Record<string, number>>('coop-tft:held', {});
+  const [player, setPlayer] = useStored('coop-tft:player', '');
+  const [autoFill, setAutoFill] = useStored('coop-tft:autofill', true);
+  const [autoRead, setAutoRead] = useState<Hud>({});
+  const lastHud = useRef<Hud>({});
   const [tab, setTab] = useState<Tab>('meta');
   const [selected, setSelected] = useState<number | null>(null);
   const [traitFilter, setTraitFilter] = useState<string | null>(null);
@@ -152,6 +156,30 @@ export default function App() {
   const ideaIds = useMemo(() => new Set(ideas.map((s) => s.champion.id)), [ideas]);
   const toBuy = shopRead?.shop.filter((c) => planIds.has(c.id)) ?? [];
 
+  // Remplissage automatique : une valeur n'est retenue que si deux lectures successives concordent.
+  useEffect(() => {
+    if (!frame || !shopRead) return;
+    const name = readPlayerName(frame);
+    if (name && name !== player) setPlayer(name);
+    const hud = readHud(frame, shopRead, player);
+    const prev = lastHud.current;
+    lastHud.current = hud;
+    const stable: Hud = {};
+    for (const k of ['stage', 'level', 'gold', 'hp'] as const)
+      if (hud[k] !== undefined && hud[k] === prev[k]) (stable as Record<string, unknown>)[k] = hud[k];
+    setAutoRead(stable);
+    if (!autoFill) return;
+    if (stable.level !== undefined && stable.level !== level) setLevel(stable.level);
+    const next = {
+      stage: stable.stage ?? game.stage,
+      gold: stable.gold ?? game.gold,
+      hp: stable.hp !== undefined && stable.hp >= 1 ? stable.hp : game.hp,
+    };
+    if (next.stage !== game.stage || next.gold !== game.gold || next.hp !== game.hp) setGame(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frame]);
+  const auto = (k: keyof Hud) => reading === 'on' && autoFill && autoRead[k] !== undefined;
+
   const [copied, setCopied] = useState(false);
   const copyDiagnostic = async () => {
     if (!frame) return;
@@ -160,6 +188,8 @@ export default function App() {
       h: frame.height,
       etat: gameState,
       boutique: shopRead?.shop.map((c) => c.name),
+      lu: autoRead,
+      joueur: player,
       lignes: frame.lines.map((l) => [l.text, l.x, l.y, l.w, l.h]),
     });
     try {
@@ -472,10 +502,10 @@ export default function App() {
                   <div className="card">
                     <div className="gauges">
                       <label>
-                        Manche
+                        <span>Manche{auto('stage') && <em className="auto">auto</em>}</span>
                         <select value={game.stage} onChange={(e) => setGame({ ...game, stage: e.target.value })}>
                           {[2, 3, 4, 5, 6, 7].flatMap((st) =>
-                            [1, 2, 3, 5, 6].map((r) => (
+                            [1, 2, 3, 4, 5, 6, 7].map((r) => (
                               <option key={`${st}-${r}`}>
                                 {st}-{r}
                               </option>
@@ -486,6 +516,7 @@ export default function App() {
                       <label>
                         <span>
                           PV <b className={`hp ${hpTone}`}>{game.hp}</b>
+                          {auto('hp') && <em className="auto">auto</em>}
                         </span>
                         <input
                           type="range"
@@ -499,6 +530,7 @@ export default function App() {
                       <label>
                         <span>
                           Or <b>{game.gold}</b>
+                          {auto('gold') && <em className="auto">auto</em>}
                           <span className="pips">
                             {[1, 2, 3, 4, 5].map((n) => (
                               <i key={n} className={interest(game.gold) >= n ? 'on' : ''} />
@@ -729,6 +761,18 @@ export default function App() {
                   {readError && <p className="tips"><span className="warn">{readError}</span></p>}
                   {reading !== 'off' && (
                     <>
+                      <label className="check">
+                        <input type="checkbox" checked={autoFill} onChange={(e) => setAutoFill(e.target.checked)} />
+                        Remplir automatiquement manche, niveau, or et PV
+                      </label>
+                      <p className="readout">
+                        Lu à l'écran : manche <b>{autoRead.stage ?? '—'}</b> · niveau <b>{autoRead.level ?? '—'}</b> · or{' '}
+                        <b>{autoRead.gold ?? '—'}</b> · PV <b>{autoRead.hp ?? '—'}</b>
+                      </p>
+                      <label className="check">
+                        Pseudo en jeu (pour retrouver tes PV)
+                        <input value={player} onChange={(e) => setPlayer(e.target.value)} placeholder="lu au menu de TFT" />
+                      </label>
                       <button onClick={copyDiagnostic} disabled={!frame}>
                         {copied ? 'Copié ✓' : 'Copier le diagnostic'}
                       </button>

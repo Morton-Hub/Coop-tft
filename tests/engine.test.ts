@@ -6,7 +6,7 @@ import { analyze, autoArrange, bestHex, colOf, hex, mirror, rowOf } from '../src
 import { advise, expectedLevel, hitChance, interest, keyLevel } from '../src/engine/economy';
 import { buildable, componentPriority, resolveItems } from '../src/engine/items';
 import { suggest } from '../src/engine/suggest';
-import { detectGame, normText, readShop } from '../src/screen/match';
+import { detectGame, normText, readHud, readPlayerName, readShop } from '../src/screen/match';
 import { isNewer } from '../src/update';
 import { boardChampions, countTraits, traitStates } from '../src/engine/traits';
 import { adjusted, aggregate, canon, patchOf, prettyId, signature, type RawMatch, type RawParticipant } from '../src/meta/aggregate';
@@ -236,6 +236,38 @@ describe('lecture de l’écran', () => {
     expect(detectGame(f('Ezreal', 'ZYRA', 'Ahri'), set)).toBe('game');
     expect(detectGame(f('BOUTIQUE', 'ÉQUIPEMENTS', 'JOUER', 'Notes de patch 18.6'), set)).toBe('lobby');
     expect(detectGame(f('Paramètres', 'Wi-Fi', 'Jouer'), set)).toBe('none');
+  });
+
+  it('lit manche, niveau, or et PV autour de la boutique', () => {
+    const frame = {
+      width: 2000,
+      height: 1000,
+      lines: [
+        line('3-2', 950, 20),
+        line('Niv. 6', 100, 780),
+        line('12/36', 250, 780), // XP : ignoré
+        line('47', 980, 800), // or, au-dessus du centre de la boutique
+        line('8', 300, 700), // autre nombre, plus loin du centre
+        line('Ezreal', 500, 900),
+        line('4', 620, 905), // coût sur la carte : même rangée, ignoré
+        line('Zyra', 900, 900),
+        line('Ahri', 1300, 900),
+        line('Roi Marlin', 1750, 300),
+        line('64', 1880, 305),
+        line('Autre Joueur', 1750, 380),
+        line('100', 1880, 385),
+      ],
+    };
+    const hud = readHud(frame, readShop(frame, set), 'Roi Marlin');
+    expect(hud).toEqual({ stage: '3-2', level: 6, gold: 47, hp: 64 });
+    // Sans pseudo connu ni boutique repérée, on ne devine ni PV ni or.
+    const bare = { ...frame, lines: frame.lines.filter((l) => !['Ezreal', 'Zyra', 'Ahri'].includes(l.text)) };
+    expect(readHud(bare, readShop(bare, set))).toEqual({ stage: '3-2', level: 6 });
+  });
+
+  it('apprend le pseudo au menu principal', () => {
+    expect(readPlayerName({ width: 1, height: 1, lines: [line('JOUER', 0, 0), line('Roi Marlin#EUW', 0, 0)] })).toBe('Roi Marlin');
+    expect(readPlayerName({ width: 1, height: 1, lines: [line('BRONZE III (4/5)', 0, 0)] })).toBeUndefined();
   });
 
   it('ne déclare pas de boutique sur un seul nom', () => {

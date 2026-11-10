@@ -806,3 +806,36 @@ nav button {
   margin: 8px 0;
   font-weight: 700;
 }
+
+.auto {
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #3ddc84;
+  color: #08130c;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+.check {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.check input[type='checkbox'] {
+  min-height: 0;
+  width: 18px;
+  height: 18px;
+  accent-color: #3ddc84;
+}
+.check input:not([type='checkbox']) {
+  flex: 1;
+  min-width: 120px;
+}
+.readout {
+  margin: 6px 0;
+  font-size: 13px;
+}
