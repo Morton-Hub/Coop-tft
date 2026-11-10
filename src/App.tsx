@@ -152,6 +152,31 @@ export default function App() {
   const ideaIds = useMemo(() => new Set(ideas.map((s) => s.champion.id)), [ideas]);
   const toBuy = shopRead?.shop.filter((c) => planIds.has(c.id)) ?? [];
 
+  const [copied, setCopied] = useState(false);
+  const copyDiagnostic = async () => {
+    if (!frame) return;
+    const text = JSON.stringify({
+      w: frame.width,
+      h: frame.height,
+      etat: gameState,
+      boutique: shopRead?.shop.map((c) => c.name),
+      lignes: frame.lines.map((l) => [l.text, l.x, l.y, l.w, l.h]),
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Repli pour les WebView sans accès direct au presse-papiers.
+      const area = document.createElement('textarea');
+      area.value = text;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const toggleReading = async () => {
     setReadError('');
     if (reading !== 'off') {
@@ -704,6 +729,9 @@ export default function App() {
                   {readError && <p className="tips"><span className="warn">{readError}</span></p>}
                   {reading !== 'off' && (
                     <>
+                      <button onClick={copyDiagnostic} disabled={!frame}>
+                        {copied ? 'Copié ✓' : 'Copier le diagnostic'}
+                      </button>
                       <h3>Boutique lue</h3>
                       {shopRead?.shop.length ? (
                         <div className="ideas">
