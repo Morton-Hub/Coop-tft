@@ -1,0 +1,26 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace = "com.mortonhub.cooptft.screenreader"
+    compileSdk = project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+    defaultConfig {
+        minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 24
+        targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    implementation "androidx.appcompat:appcompat:1.7.1"
+    // Reconnaissance de texte embarquée (modèle latin inclus dans l'APK, aucun envoi réseau).
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
+}
