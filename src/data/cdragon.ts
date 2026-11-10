@@ -1,7 +1,7 @@
-import type { Champion, GameSet, Role, Trait } from './types';
+import type { Champion, GameSet, Item, Role, Trait } from './types';
 
 const BASE = 'https://raw.communitydragon.org/latest';
-const CACHE_KEY = 'coop-tft:data:v1';
+const CACHE_KEY = 'coop-tft:data:v2';
 const CACHE_TTL = 12 * 3600 * 1000;
 
 /* Forme (partielle) du fichier cdragon/tft/<locale>.json */
@@ -17,6 +17,7 @@ interface RawChampion {
   stats?: { range?: number | null; armor?: number | null; hp?: number | null } | null;
 }
 interface RawTrait {
+  apiName?: string;
   name: string;
   effects?: { minUnits?: number | null }[] | null;
 }
@@ -27,8 +28,14 @@ interface RawSet {
   champions?: RawChampion[];
   traits?: RawTrait[];
 }
+interface RawItem {
+  apiName?: string | null;
+  name?: string | null;
+  icon?: string | null;
+}
 export interface RawData {
   setData?: RawSet[];
+  items?: RawItem[];
 }
 
 export function assetUrl(path?: string | null): string | undefined {
@@ -47,7 +54,7 @@ export function classifyRole(c: RawChampion): Role {
   return (c.stats?.armor ?? 0) >= 45 ? 'tank' : 'melee';
 }
 
-function normalizeSet(raw: RawSet): GameSet {
+function normalizeSet(raw: RawSet, items: Record<string, Item>): GameSet {
   const seen = new Set<string>();
   const champions: Champion[] = [];
   for (const c of raw.champions ?? []) {
@@ -69,6 +76,7 @@ function normalizeSet(raw: RawSet): GameSet {
   const traits: Trait[] = (raw.traits ?? [])
     .filter((t) => used.has(t.name))
     .map((t) => ({
+      id: t.apiName ?? t.name,
       name: t.name,
       breakpoints: [...new Set((t.effects ?? []).map((e) => e.minUnits ?? 0).filter((n) => n > 0))].sort(
         (a, b) => a - b,
@@ -78,6 +86,8 @@ function normalizeSet(raw: RawSet): GameSet {
   champions.sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
   return {
     key: raw.mutator,
+    number: raw.number,
+    items,
     // Le champ « name » de Community Dragon n'est pas fiable (ex. « Set10 » pour le set 18).
     label: raw.mutator === `TFTSet${raw.number}` ? `Set ${raw.number}` : `Set ${raw.number} (${raw.mutator})`,
     champions,
@@ -85,21 +95,30 @@ function normalizeSet(raw: RawSet): GameSet {
   };
 }
 
-/** Sets jouables, le plus récent d'abord ; pour un même numéro, le set standard avant ses variantes. */
-export function normalize(data: RawData): GameSet[] {
+/** Le set jouable le plus récent (le set standard passe avant ses variantes de mode). */
+export function normalize(data: RawData): GameSet | undefined {
+  const items: Record<string, Item> = {};
+  for (const it of data.items ?? []) {
+    if (it.apiName && it.name && /^TFT\d*_Item_/i.test(it.apiName))
+      items[it.apiName.toLowerCase()] = { name: it.name, icon: assetUrl(it.icon) };
+  }
   const raws = (data.setData ?? []).slice().sort((a, b) => {
     if (a.number !== b.number) return b.number - a.number;
     const std = (s: RawSet) => (s.mutator === `TFTSet${s.number}` ? 0 : 1);
     return std(a) - std(b) || (b.champions?.length ?? 0) - (a.champions?.length ?? 0);
   });
-  return raws.map(normalizeSet).filter((s) => s.champions.length >= 20 && s.traits.length > 0);
+  for (const raw of raws) {
+    const set = normalizeSet(raw, items);
+    if (set.champions.length >= 20 && set.traits.length > 0) return set;
+  }
+  return undefined;
 }
 
-export async function loadSets(force = false): Promise<GameSet[]> {
+export async function loadSet(force = false): Promise<GameSet> {
   if (!force) {
     try {
       const cached = JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null');
-      if (cached && Date.now() - cached.at < CACHE_TTL && cached.sets?.length) return cached.sets;
+      if (cached && Date.now() - cached.at < CACHE_TTL && cached.set) return cached.set;
     } catch {
       /* cache illisible : on recharge */
     }
@@ -109,15 +128,14 @@ export async function loadSets(force = false): Promise<GameSet[]> {
     try {
       const res = await fetch(`${BASE}/cdragon/tft/${locale}.json`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // On ne garde que les 3 sets les plus récents pour tenir dans le localStorage.
-      const sets = normalize(await res.json()).slice(0, 3);
-      if (!sets.length) throw new Error('aucun set exploitable');
+      const set = normalize(await res.json());
+      if (!set) throw new Error('aucun set exploitable');
       try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), sets }));
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), set }));
       } catch {
         /* quota dépassé : pas de cache */
       }
-      return sets;
+      return set;
     } catch (e) {
       lastError = e;
     }

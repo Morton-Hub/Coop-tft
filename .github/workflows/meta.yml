@@ -1,0 +1,31 @@
+name: Meta
+# Recalcule les compos méta à partir des parties des meilleurs joueurs et publie
+# meta.json sur la branche « meta », lue par l'application.
+on:
+  schedule:
+    - cron: '23 */4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: meta
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/fetch-meta.mjs out/meta.json
+        env:
+          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
+      - name: Publish to meta branch
+        run: |
+          [ -f out/meta.json ] || exit 0
+          cd out
+          git init -q -b meta
+          git add meta.json
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "Update meta"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" meta

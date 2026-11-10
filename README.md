@@ -16,13 +16,33 @@ lance TFT et glisse Coop TFT en écran partagé. Toutes les versions :
 
 | Fonction | Détail |
 | --- | --- |
-| Données du set | Champions, traits et paliers du set en cours, chargés depuis Community Dragon (français, repli anglais), mis en cache 12 h. Sélecteur de set. |
+| Méta en direct | Compos les plus performantes du patch en cours (tier S à C, place moyenne, top 4, taux de victoire, popularité, objets des carrys), recalculées toutes les 4 h à partir des parties des meilleurs joueurs EUW. Un tap charge la compo sur le plateau. |
+| Données du set | Champions, traits, paliers et objets du set en cours uniquement, chargés depuis Community Dragon (français, repli anglais), mis en cache 12 h. |
 | Plateau 4 × 7 | Tap sur une unité : elle se pose sur la meilleure case libre pour son rôle. Tap unité puis case : déplacement ou échange. |
 | Synergies | Compteur par trait avec paliers ; tap sur un trait pour filtrer les unités correspondantes. |
 | Conseils de placement | Alertes (carry trop avancé, tank au fond, pas de première ligne, carry non couvert, ligne arrière groupée), « Auto-placer », « Inverser » (miroir gauche/droite). |
 | Pistes pour la suite | Plusieurs unités classées selon les paliers qu'elles activent ou rapprochent, filtrées selon ton niveau. |
-| Mes compos | Enregistre tes compos (par exemple recopiées d'une tier list) et recharge-les en un tap. |
+| Perso | Enregistre tes propres compos et recharge-les en un tap. |
 | Écran partagé | Volet large (TFT en haut, app en bas) : plateau, synergies et unités sur trois colonnes, sans défilement côté plateau. Volet étroit (côte à côte) : tout empilé. Le conseil prioritaire reste toujours visible sous le plateau. |
+
+## Activer la méta en direct
+
+L'onglet « Méta » lit `meta.json`, publié sur la branche `meta` par le workflow `Meta`
+(`scripts/fetch-meta.mjs`). Ce workflow interroge l'API officielle de Riot : classement
+Challenger, puis les dernières parties classées de ces joueurs, regroupées par compo
+(`src/meta/aggregate.ts`). Trois réglages sont nécessaires, une seule fois :
+
+1. **Clé Riot** : sur [developer.riotgames.com](https://developer.riotgames.com), se connecter
+   avec son compte Riot. La clé de développement affichée fonctionne tout de suite mais expire
+   au bout de 24 h ; pour une méta qui se met à jour sans intervention, demander une
+   *Personal API Key* (« Register Product »), qui n'expire pas.
+2. **Secret GitHub** : dans le repo, *Settings → Secrets and variables → Actions → New
+   repository secret*, nom `RIOT_API_KEY`, valeur = la clé.
+3. **Repo public** : *Settings → General → Change repository visibility*. L'app lit le fichier
+   sans authentification, ce qui est impossible sur un repo privé. (La clé reste secrète.)
+
+Puis lancer une première fois : *Actions → Meta → Run workflow* (environ 6 minutes).
+Région modifiable avec les variables `RIOT_PLATFORM` / `RIOT_REGION` du script.
 
 ## Limite assumée : pas de lecture automatique de la partie
 
@@ -64,6 +84,9 @@ possible via le workflow manuel `Deploy web (Pages)`.
 ```
 src/data/cdragon.ts        chargement + normalisation des données Community Dragon
 src/data/demo.ts           jeu fictif de secours si les données sont injoignables
+src/meta/aggregate.ts      parties Riot -> compos méta classées
+src/meta/load.ts           lecture de meta.json côté app
+scripts/fetch-meta.mjs     collecte des parties via l'API Riot (workflow Meta)
 src/engine/traits.ts       comptage des traits et paliers
 src/engine/suggest.ts      classement des unités à ajouter
 src/engine/positioning.ts  cases préférées par rôle, placement auto, analyse
@@ -76,9 +99,9 @@ quand Community Dragon le fournit, sinon de son armure.
 
 ## Feuille de route
 
-1. **Compos méta réelles** : petit service qui agrège les parties des meilleurs joueurs via
-   l'API Riot (clé développeur requise) pour proposer les compos les plus performantes du patch.
-2. **Objets** : recettes, objets recommandés par carry, choix au carrousel.
+1. **Méta plus fine** : regroupement des variantes d'une même compo, placement type par compo,
+   plusieurs régions.
+2. **Objets** : recettes et choix au carrousel.
 3. **Plan de partie** : économie, paliers d'intérêts, moments de montée de niveau et de roll.
 4. **Placement avancé** : saisie rapide du plateau adverse pour des conseils ciblés.
 5. **Bilan après partie** : historique via l'API Riot et points à travailler.

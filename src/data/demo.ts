@@ -29,11 +29,13 @@ champions.sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
 
 export const DEMO_SET: GameSet = {
   key: 'demo',
+  number: 0,
+  items: {},
   label: 'Données de démo (fictives)',
   demo: true,
   champions,
   traits: [
-    ...ORIGINS.map((name) => ({ name, breakpoints: [2, 4, 6] })),
-    ...CLASSES.map((c) => ({ name: c.name, breakpoints: [2, 4] })),
+    ...ORIGINS.map((name) => ({ id: name, name, breakpoints: [2, 4, 6] })),
+    ...CLASSES.map((c) => ({ id: c.name, name: c.name, breakpoints: [2, 4] })),
   ],
 };

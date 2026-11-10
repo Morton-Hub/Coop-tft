@@ -66,9 +66,13 @@ header {
   padding: 6px 10px;
   border-bottom: 1px solid var(--line);
 }
-header select {
-  min-width: 0;
+header .setname {
   flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 header .level {
   display: flex;
@@ -472,3 +476,54 @@ nav button.on {
   display: grid;
   text-align: left;
 }
+
+.metahead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.metalist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.comp {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 6px 8px;
+}
+.compbody {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.compunits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.compunits .icon {
+  width: 30px;
+  height: 30px;
+}
+.tier {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: #10131f;
+  background: var(--c1);
+}
+.tier-S { background: #ff6b6b; }
+.tier-A { background: #f0b84a; }
+.tier-B { background: #6fcf7f; }

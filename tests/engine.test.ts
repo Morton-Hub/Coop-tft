@@ -5,6 +5,7 @@ import type { Board } from '../src/data/types';
 import { analyze, autoArrange, bestHex, colOf, hex, mirror, rowOf } from '../src/engine/positioning';
 import { suggest } from '../src/engine/suggest';
 import { boardChampions, countTraits, traitStates } from '../src/engine/traits';
+import { aggregate, patchOf, signature, type RawMatch, type RawParticipant } from '../src/meta/aggregate';
 
 const id = (origin: string, cl: string) => `demo_${origin}_${cl}`;
 const champs = (...ids: string[]) => DEMO_SET.champions.filter((c) => ids.includes(c.id));
@@ -91,16 +92,21 @@ describe('cdragon', () => {
     ],
   };
   it('choisit le set standard le plus récent et filtre les unités non jouables', () => {
-    const sets = normalize(raw);
-    expect(sets.map((s) => s.label)).toEqual(['Set 99', 'Set 99 (TFTSet99_Mode)']); // le 98 n'a pas de traits
-    expect(sets[0].champions).toHaveLength(25);
-    expect(sets[0].traits).toEqual([
-      { name: 'Alpha', breakpoints: [2, 4] },
-      { name: 'Beta', breakpoints: [3] },
+    const set = normalize({ ...raw, items: [
+      { apiName: 'TFT_Item_Bloodthirster', name: 'Soif-de-sang', icon: 'ASSETS/Items/BT.tex' },
+      { apiName: 'TFT9_Augment_X', name: 'Optimisation' },
+    ] })!;
+    expect(set.label).toBe('Set 99'); // pas la variante de mode, pas le set 98 sans traits
+    expect(set.number).toBe(99);
+    expect(set.champions).toHaveLength(25);
+    expect(set.traits).toEqual([
+      { id: 'Alpha', name: 'Alpha', breakpoints: [2, 4] },
+      { id: 'Beta', name: 'Beta', breakpoints: [3] },
     ]);
-    expect(sets[0].champions[0].icon).toBe(
+    expect(set.champions[0].icon).toBe(
       'https://raw.communitydragon.org/latest/game/assets/characters/tft99_c/hud/tile.tft_set99.png',
     );
+    expect(Object.keys(set.items)).toEqual(['tft_item_bloodthirster']);
   });
   it('déduit le rôle de la portée, du rôle Riot ou de l’armure', () => {
     const base = { apiName: 'x', name: 'x', cost: 1 };
@@ -109,5 +115,60 @@ describe('cdragon', () => {
     expect(classifyRole({ ...base, role: 'ADTank', stats: { range: 1 } })).toBe('tank');
     expect(classifyRole({ ...base, role: 'ADFighter', stats: { range: 1 } })).toBe('melee');
     expect(classifyRole({ ...base, stats: { range: 1, armor: 55 } })).toBe('tank');
+  });
+});
+
+describe('meta', () => {
+  const trait = (name: string, num_units: number, style: number) => ({ name, num_units, style, tier_current: style ? 1 : 0 });
+  const board = (placement: number, kind: 'mage' | 'tank'): RawParticipant =>
+    kind === 'mage'
+      ? {
+          placement,
+          traits: [trait('Set_Mage', 6, 3), trait('Set_Bastion', 2, 1), trait('Set_Unique', 1, 4), trait('Set_Off', 1, 0)],
+          units: [
+            { character_id: 'M_Carry', itemNames: ['Item_A', 'Item_B', 'Item_C'] },
+            ...['M1', 'M2', 'M3', 'M4', 'M5', 'M6'].map((character_id) => ({ character_id })),
+            { character_id: placement % 2 ? 'M_Flex1' : 'M_Flex2' },
+          ],
+        }
+      : {
+          placement,
+          traits: [trait('Set_Colosse', 4, 2), trait('Set_Tireur', 4, 2)],
+          units: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map((character_id) => ({ character_id })),
+        };
+  const match = (version: string, queue = 1100, setNumber = 18): RawMatch => ({
+    info: {
+      queue_id: queue,
+      tft_set_number: setNumber,
+      game_version: `Linux Version 16.${version} (Nov 01 2026) [PUBLIC] <Releases/16.${version}>`,
+      // Les mages finissent 1-4, les tanks 5-8.
+      participants: [1, 2, 3, 4, 5, 6, 7, 8].map((p) => board(p, p <= 4 ? 'mage' : 'tank')),
+    },
+  });
+
+  it('lit le patch et la signature d’un plateau', () => {
+    expect(patchOf(match('22').info.game_version)).toBe('16.22');
+    expect(signature(board(1, 'mage')).map((t) => t.name)).toEqual(['Set_Mage', 'Set_Bastion']);
+  });
+
+  it('regroupe par compo, ne garde que le dernier patch classé et classe par place moyenne', () => {
+    const matches = [
+      ...Array.from({ length: 30 }, () => match('22')),
+      ...Array.from({ length: 10 }, () => match('21')),
+      match('22', 1090), // partie non classée
+      match('22', 1100, 17), // ancien set
+    ];
+    const meta = aggregate(matches, { region: 'euw1', now: new Date('2026-11-10T00:00:00Z') });
+    expect(meta).toMatchObject({ set: 18, patch: '16.22', matches: 30, boards: 240, region: 'euw1' });
+    expect(meta.comps).toHaveLength(2);
+    const [mage, tank] = meta.comps;
+    expect(mage).toMatchObject({ tier: 'S', avgPlacement: 2.5, top4: 1, win: 0.25, pickRate: 0.5, count: 120 });
+    expect(mage.traits).toEqual([
+      { id: 'Set_Mage', units: 6 },
+      { id: 'Set_Bastion', units: 2 },
+    ]);
+    expect(mage.units).toEqual(['M_Carry', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M_Flex1', 'M_Flex2']);
+    expect(mage.carries).toEqual([{ id: 'M_Carry', items: ['Item_A', 'Item_B', 'Item_C'] }]);
+    expect(tank).toMatchObject({ tier: 'C', avgPlacement: 6.5, top4: 0, carries: [] });
   });
 });

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { loadSets } from './data/cdragon';
+import { loadSet } from './data/cdragon';
 import { DEMO_SET } from './data/demo';
 import { COLS, ROWS, type Board, type Champion, type GameSet } from './data/types';
 import { analyze, autoArrange, bestHex, hex, mirror, SCOUTING_CHECKLIST } from './engine/positioning';
 import { suggest } from './engine/suggest';
 import { boardChampions, traitStates } from './engine/traits';
+import type { MetaComp } from './meta/aggregate';
+import { ago, loadMeta, type MetaResult } from './meta/load';
 import { useStored } from './storage';
 
-type Tab = 'units' | 'advice' | 'comps';
+type Tab = 'meta' | 'units' | 'advice' | 'comps';
 interface SavedComp {
   name: string;
   setKey: string;
@@ -28,13 +30,13 @@ function Icon({ c }: { c: Champion }) {
 }
 
 export default function App() {
-  const [sets, setSets] = useState<GameSet[]>([DEMO_SET]);
+  const [set, setSet] = useState<GameSet>(DEMO_SET);
+  const [meta, setMeta] = useState<MetaResult | 'loading' | 'error'>('loading');
   const [status, setStatus] = useState<'loading' | 'live' | 'demo'>('loading');
-  const [setKey, setSetKey] = useStored<string | null>('coop-tft:set', null);
   const [board, setBoard] = useStored<Board>('coop-tft:board', {});
   const [level, setLevel] = useStored('coop-tft:level', 6);
   const [comps, setComps] = useStored<SavedComp[]>('coop-tft:comps', []);
-  const [tab, setTab] = useState<Tab>('units');
+  const [tab, setTab] = useState<Tab>('meta');
   const [selected, setSelected] = useState<number | null>(null);
   const [traitFilter, setTraitFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -42,20 +44,31 @@ export default function App() {
 
   const load = (force: boolean) => {
     setStatus('loading');
-    loadSets(force)
+    loadSet(force)
       .then((s) => {
-        setSets(s);
+        setSet(s);
         setStatus('live');
       })
       .catch(() => {
-        setSets([DEMO_SET]);
+        setSet(DEMO_SET);
         setStatus('demo');
       });
   };
-  useEffect(() => load(false), []);
+  const refreshMeta = (force: boolean) => {
+    setMeta('loading');
+    loadMeta(force)
+      .then(setMeta)
+      .catch(() => setMeta('error'));
+  };
+  useEffect(() => {
+    load(false);
+    refreshMeta(false);
+  }, []);
 
-  const set = sets.find((s) => s.key === setKey) ?? sets[0];
   const byId = useMemo(() => new Map(set.champions.map((c) => [c.id, c])), [set]);
+  // Les ids de l'API Riot n'ont pas toujours la même casse que ceux de Community Dragon.
+  const byLower = useMemo(() => new Map(set.champions.map((c) => [c.id.toLowerCase(), c])), [set]);
+  const traitName = useMemo(() => new Map(set.traits.map((t) => [t.id.toLowerCase(), t.name])), [set]);
   const units = useMemo(() => boardChampions(board, set), [board, set]);
   const traits = useMemo(() => traitStates(units, set), [units, set]);
   const tips = useMemo(() => analyze(board, set), [board, set]);
@@ -96,12 +109,14 @@ export default function App() {
     setBoard(next);
     setSelected(null);
   };
-  const changeSet = (key: string) => {
-    setSetKey(key);
-    setBoard({});
+  const compUnits = (c: MetaComp) =>
+    c.units.map((id) => byLower.get(id.toLowerCase())).filter((u): u is Champion => !!u);
+  const loadComp = (c: MetaComp) => {
+    const raw: Board = {};
+    compUnits(c).forEach((u, i) => (raw[i] = u.id));
+    setBoard(autoArrange(raw, set));
+    setLevel(Math.min(10, Math.max(level, Object.keys(raw).length)));
     setSelected(null);
-    setTraitFilter(null);
-    setCostFilter(null);
   };
   const saveComp = () => {
     const name = prompt('Nom de la compo ?')?.trim();
@@ -112,13 +127,10 @@ export default function App() {
     <div className="app">
       <header>
         <strong>Coop TFT</strong>
-        <select value={set.key} onChange={(e) => changeSet(e.target.value)} aria-label="Set">
-          {sets.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+        <span className="setname">
+          {set.label}
+          {typeof meta === 'object' && meta.meta.set === set.number && ` · patch ${meta.meta.patch}`}
+        </span>
         <label className="level">
           Niv.
           <select value={level} onChange={(e) => setLevel(Number(e.target.value))}>
@@ -214,9 +226,10 @@ export default function App() {
           <nav>
             {(
               [
+                ['meta', 'Méta'],
                 ['units', 'Unités'],
                 ['advice', `Conseils${tips.some((t) => t.level === 'warn') ? ' ⚠' : ''}`],
-                ['comps', 'Mes compos'],
+                ['comps', 'Perso'],
               ] as [Tab, string][]
             ).map(([k, label]) => (
               <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
@@ -224,6 +237,68 @@ export default function App() {
               </button>
             ))}
           </nav>
+
+          {tab === 'meta' && (
+            <div className="panel">
+              {meta === 'loading' && <p className="muted">Chargement de la méta…</p>}
+              {meta === 'error' && (
+                <p className="muted">
+                  Méta indisponible pour l'instant : le fichier de données n'est pas encore publié ou le réseau est
+                  coupé. <button onClick={() => refreshMeta(true)}>Réessayer</button>
+                </p>
+              )}
+              {typeof meta === 'object' && (
+                <>
+                  <div className="metahead">
+                    <small>
+                      Patch {meta.meta.patch} · {meta.meta.matches} parties {meta.meta.region.toUpperCase()} haut
+                      niveau · {ago(meta.meta.generatedAt)}
+                      {meta.stale && ' · hors ligne'}
+                    </small>
+                    <button onClick={() => refreshMeta(true)} aria-label="Actualiser">
+                      ↻
+                    </button>
+                  </div>
+                  {meta.meta.set !== set.number && status === 'live' && (
+                    <p className="muted">Ces statistiques portent sur le set {meta.meta.set}, pas sur le set chargé.</p>
+                  )}
+                  <ul className="metalist">
+                    {meta.meta.comps.map((c, k) => (
+                      <li key={k}>
+                        <button className="comp" onClick={() => loadComp(c)}>
+                          <span className={`tier tier-${c.tier}`}>{c.tier}</span>
+                          <span className="compbody">
+                            <b>
+                              {c.traits.map((t) => `${t.units} ${traitName.get(t.id.toLowerCase()) ?? t.id}`).join(' · ')}
+                            </b>
+                            <small>
+                              Place moy. {c.avgPlacement.toFixed(2)} · Top 4 {Math.round(c.top4 * 100)} % · Victoire{' '}
+                              {Math.round(c.win * 100)} % · Jouée {(c.pickRate * 100).toFixed(1)} %
+                            </small>
+                            <span className="compunits">
+                              {compUnits(c).map((u) => (
+                                <Icon key={u.id} c={u} />
+                              ))}
+                            </span>
+                            {c.carries.map((car) => {
+                              const u = byLower.get(car.id.toLowerCase());
+                              return (
+                                u && (
+                                  <small key={car.id}>
+                                    {u.name} : {car.items.map((it) => set.items[it.toLowerCase()]?.name ?? it).join(', ')}
+                                  </small>
+                                )
+                              );
+                            })}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
 
           {tab === 'units' && (
             <div className="panel">

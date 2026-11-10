@@ -11,13 +11,22 @@ export interface Champion {
 }
 
 export interface Trait {
+  id: string; // apiName
   name: string;
   breakpoints: number[]; // nombre d'unités par palier, croissant
 }
 
+export interface Item {
+  name: string;
+  icon?: string;
+}
+
 export interface GameSet {
   key: string;
+  number: number;
   label: string;
+  /** Objets, indexés par apiName en minuscules. */
+  items: Record<string, Item>;
   champions: Champion[];
   traits: Trait[];
   demo?: boolean;

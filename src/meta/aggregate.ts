@@ -1,0 +1,171 @@
+/*
+ * Agrégation des parties classées (API Riot, tft-match-v1) en compos méta.
+ * Fichier autonome, sans import : il est exécuté tel quel par scripts/fetch-meta.mjs.
+ */
+
+export interface RawUnit {
+  character_id: string;
+  itemNames?: string[];
+}
+export interface RawTraitEntry {
+  name: string;
+  num_units: number;
+  style: number;
+  tier_current: number;
+}
+export interface RawParticipant {
+  placement: number;
+  traits: RawTraitEntry[];
+  units: RawUnit[];
+}
+export interface RawMatch {
+  info: {
+    queue_id: number;
+    tft_set_number: number;
+    game_version: string;
+    participants: RawParticipant[];
+  };
+}
+
+export type Tier = 'S' | 'A' | 'B' | 'C';
+export interface MetaComp {
+  tier: Tier;
+  /** Les deux traits qui définissent la compo, avec leur nombre d'unités médian. */
+  traits: { id: string; units: number }[];
+  /** Unités les plus jouées dans cette compo (ids Riot). */
+  units: string[];
+  carries: { id: string; items: string[] }[];
+  count: number;
+  pickRate: number;
+  avgPlacement: number;
+  top4: number;
+  win: number;
+}
+export interface MetaData {
+  generatedAt: string;
+  region: string;
+  set: number;
+  patch: string;
+  matches: number;
+  boards: number;
+  comps: MetaComp[];
+}
+
+const RANKED_QUEUE = 1100;
+
+export function patchOf(gameVersion: string): string {
+  return (/Releases\/(\d+\.\d+)/.exec(gameVersion) ?? /(\d+\.\d+)/.exec(gameVersion))?.[1] ?? '?';
+}
+const patchNum = (p: string) => {
+  const [a, b] = p.split('.').map(Number);
+  return (a || 0) * 1000 + (b || 0);
+};
+const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+
+function tierOf(avg: number): Tier {
+  if (avg <= 4.1) return 'S';
+  if (avg <= 4.35) return 'A';
+  if (avg <= 4.6) return 'B';
+  return 'C';
+}
+
+/** Les deux traits actifs les plus poussés d'un plateau (les traits à 1 unité ne comptent qu'en dernier recours). */
+export function signature(p: RawParticipant): RawTraitEntry[] {
+  const active = p.traits.filter((t) => t.tier_current > 0);
+  const rank = (t: RawTraitEntry) => (t.num_units > 1 ? 1000 : 0) + t.style * 20 + t.num_units;
+  return active.sort((a, b) => rank(b) - rank(a) || a.name.localeCompare(b.name)).slice(0, 2);
+}
+
+function topKeys(counts: Map<string, number>): [string, number][] {
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+
+export function aggregate(
+  matches: RawMatch[],
+  opts: { region?: string; now?: Date; minBoardsForPatch?: number } = {},
+): MetaData {
+  const ranked = matches.filter((m) => m.info?.queue_id === RANKED_QUEUE && m.info.participants?.length);
+  const set = Math.max(0, ...ranked.map((m) => m.info.tft_set_number));
+  let pool = ranked.filter((m) => m.info.tft_set_number === set);
+
+  // On ne garde que le dernier patch dès qu'il a assez de parties pour être représentatif.
+  const latest = pool.map((m) => patchOf(m.info.game_version)).sort((a, b) => patchNum(b) - patchNum(a))[0] ?? '?';
+  const onLatest = pool.filter((m) => patchOf(m.info.game_version) === latest);
+  if (onLatest.length * 8 >= (opts.minBoardsForPatch ?? 200)) pool = onLatest;
+
+  interface Cluster {
+    boards: RawParticipant[];
+    traitUnits: Map<string, number[]>;
+  }
+  const clusters = new Map<string, Cluster>();
+  let boards = 0;
+  for (const m of pool) {
+    for (const p of m.info.participants) {
+      const sig = signature(p);
+      if (!sig.length) continue;
+      boards++;
+      const key = sig.map((t) => t.name).sort().join('|');
+      let c = clusters.get(key);
+      if (!c) clusters.set(key, (c = { boards: [], traitUnits: new Map() }));
+      c.boards.push(p);
+      for (const t of sig) c.traitUnits.set(t.name, [...(c.traitUnits.get(t.name) ?? []), t.num_units]);
+    }
+  }
+
+  const minCount = Math.max(15, Math.ceil(boards * 0.01));
+  const comps: MetaComp[] = [];
+  for (const c of clusters.values()) {
+    const n = c.boards.length;
+    if (n < minCount) continue;
+
+    const unitFreq = new Map<string, number>();
+    const itemised = new Map<string, number>();
+    const items = new Map<string, Map<string, number>>();
+    for (const p of c.boards) {
+      for (const id of new Set(p.units.map((u) => u.character_id))) bump(unitFreq, id);
+      for (const u of p.units) {
+        if ((u.itemNames?.length ?? 0) < 3) continue;
+        bump(itemised, u.character_id);
+        if (!items.has(u.character_id)) items.set(u.character_id, new Map());
+        for (const it of u.itemNames!) bump(items.get(u.character_id)!, it);
+      }
+    }
+    const byFreq = topKeys(unitFreq);
+    const core = byFreq.filter(([, k]) => k / n >= 0.5).slice(0, 9);
+    const units = (core.length >= 7 ? core : byFreq.slice(0, 7)).map(([id]) => id);
+
+    const carries = topKeys(itemised)
+      .filter(([id, k]) => k / n >= 0.3 && units.includes(id))
+      .slice(0, 2)
+      .map(([id]) => ({ id, items: topKeys(items.get(id)!).slice(0, 3).map(([it]) => it) }));
+
+    const traits = [...c.traitUnits]
+      .map(([id, list]) => ({ id, units: list.sort((a, b) => a - b)[Math.floor(list.length / 2)] }))
+      .sort((a, b) => b.units - a.units || a.id.localeCompare(b.id));
+
+    const avg = c.boards.reduce((s, p) => s + p.placement, 0) / n;
+    comps.push({
+      tier: tierOf(avg),
+      traits,
+      units,
+      carries,
+      count: n,
+      pickRate: round(n / boards, 3),
+      avgPlacement: round(avg),
+      top4: round(c.boards.filter((p) => p.placement <= 4).length / n, 3),
+      win: round(c.boards.filter((p) => p.placement === 1).length / n, 3),
+    });
+  }
+  comps.sort((a, b) => a.avgPlacement - b.avgPlacement || b.count - a.count);
+
+  return {
+    generatedAt: (opts.now ?? new Date()).toISOString(),
+    region: opts.region ?? '',
+    set,
+    patch: latest,
+    matches: pool.length,
+    boards,
+    comps: comps.slice(0, 25),
+  };
+}
