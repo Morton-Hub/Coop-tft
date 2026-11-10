@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadSet } from './data/cdragon';
 import { DEMO_SET } from './data/demo';
 import { COLS, ROWS, type Board, type Champion, type GameSet } from './data/types';
-import { advise, type Situation } from './engine/economy';
+import { advise, hitChance, interest, type Action, type Situation } from './engine/economy';
 import { buildable, componentPriority, resolveItems } from './engine/items';
 import { analyze, autoArrange, bestHex, hex, mirror, SCOUTING_CHECKLIST } from './engine/positioning';
 import { suggest } from './engine/suggest';
@@ -14,11 +14,30 @@ import { screenReaderAvailable, startScreenReader } from './screen/reader';
 import { useStored } from './storage';
 import { APK_URL, updateAvailable } from './update';
 
-type Tab = 'meta' | 'units' | 'advice' | 'comps' | 'screen';
+type Tab = 'live' | 'meta' | 'units' | 'advice' | 'comps' | 'screen';
 interface SavedComp {
   name: string;
   setKey: string;
   board: Board;
+}
+
+const ACTION_LOOK: Record<Action, { icon: string; label: string }> = {
+  save: { icon: '💰', label: 'Économise' },
+  level: { icon: '⬆️', label: 'Monte de niveau' },
+  roll: { icon: '🎲', label: 'Roll' },
+  allin: { icon: '🔥', label: 'Roll tout' },
+};
+
+function Bar({ label, value, tone }: { label: string; value: number; tone?: string }) {
+  return (
+    <div className="bar">
+      <span>{label}</span>
+      <div className="track">
+        <div className={`fill ${tone ?? ''}`} style={{ width: `${Math.round(value * 100)}%` }} />
+      </div>
+      <b>{Math.round(value * 100)} %</b>
+    </div>
+  );
 }
 
 function Icon({ c }: { c: Champion }) {
@@ -112,6 +131,11 @@ export default function App() {
   const parts = componentPriority(allNeeds);
   const ready = buildable(allNeeds, held);
 
+  const mode: Action | 'idle' = econ?.action ?? 'idle';
+  const badHexes = new Set(tips.filter((t) => t.level === 'warn' && t.hex !== undefined).map((t) => t.hex));
+  const warnings = tips.filter((t) => t.level === 'warn');
+  const hpTone = game.hp <= 30 ? 'red' : game.hp <= 55 ? 'orange' : 'green';
+
   const shopRead = useMemo(() => (frame ? readShop(frame, set.champions) : null), [frame, set]);
   // Unités de la boutique qui font partie du plan (le plateau chargé) ou qui en complètent une synergie.
   const planIds = useMemo(() => new Set(Object.values(board)), [board]);
@@ -191,6 +215,7 @@ export default function App() {
     setBoard(autoArrange(raw, set));
     setPlan(c);
     setHeld({});
+    setTab('live');
     setLevel(Math.min(10, Math.max(level, Object.keys(raw).length)));
     setSelected(null);
   };
@@ -200,13 +225,18 @@ export default function App() {
   };
 
   return (
-    <div className="app">
+    <div className={`app mode-${mode}`}>
       <header>
         <strong>Coop TFT</strong>
         <span className="setname">
           {set.label}
           {typeof meta === 'object' && meta.meta.set === set.number && meta.meta.patch && ` · patch ${meta.meta.patch}`}
         </span>
+        {econ && (
+          <button className="pill" onClick={() => setTab('live')}>
+            {ACTION_LOOK[econ.action].icon} {ACTION_LOOK[econ.action].label}
+          </button>
+        )}
         <label className="level">
           Niv.
           <select value={level} onChange={(e) => setLevel(Number(e.target.value))}>
@@ -248,13 +278,16 @@ export default function App() {
                   return (
                     <button
                       key={i}
-                      className={`hex ${selected === i ? 'sel' : ''} ${c ? `cost-${c.cost}` : ''}`}
+                      className={`hex ${selected === i ? 'sel' : ''} ${c ? `cost-${c.cost}` : ''} ${badHexes.has(i) ? 'bad' : ''} ${
+                        c && toBuy.some((b) => b.id === c.id) ? 'buy' : ''
+                      }`}
                       style={{ gridColumn: `${col * 2 + 1 + (r % 2)} / span 2` }}
                       onClick={() => tapHex(i)}
                       aria-label={c ? c.name : `Case vide ${r + 1}-${col + 1}`}
                     >
                       {c && <Icon c={c} />}
                       {c && <span className="hexname">{c.name}</span>}
+                      {c && carry?.id === c.id && <span className="star">★</span>}
                     </button>
                   );
                 })}
@@ -282,13 +315,21 @@ export default function App() {
             </button>
           </div>
           {reading === 'on' && toBuy.length > 0 ? (
-            <button className="tipbar buy" onClick={() => setTab('screen')}>
-              Boutique : achète {[...new Set(toBuy.map((c) => c.name))].join(', ')}
+            <button className="tipbar buy" onClick={() => setTab('live')}>
+              🛒 Achète {[...new Set(toBuy.map((c) => c.name))].join(', ')}
+            </button>
+          ) : warnings.length > 0 ? (
+            <button className="tipbar warn" onClick={() => setTab('live')}>
+              ⚠ {warnings[0].text}
+              {tips.length > 1 && <small> +{tips.length - 1}</small>}
+            </button>
+          ) : econ ? (
+            <button className={`tipbar act ${econ.action}`} onClick={() => setTab('live')}>
+              {ACTION_LOOK[econ.action].icon} {econ.title}
             </button>
           ) : (
             <button className={`tipbar ${topTip.level}`} onClick={() => setTab('advice')}>
               {topTip.text}
-              {tips.length > 1 && <small> +{tips.length - 1}</small>}
             </button>
           )}
         </section>
@@ -316,6 +357,7 @@ export default function App() {
           <nav>
             {(
               [
+                ['live', 'Direct'],
                 ['meta', 'Méta'],
                 ['units', 'Unités'],
                 ['advice', `Conseils${tips.some((t) => t.level === 'warn') ? ' ⚠' : ''}`],
@@ -328,6 +370,119 @@ export default function App() {
               </button>
             ))}
           </nav>
+
+          {tab === 'live' && (
+            <div className="panel live">
+              {!econ ? (
+                <p className="muted">
+                  Choisis une compo dans l'onglet Méta : cette vue t'indique ensuite quoi faire à chaque moment de la
+                  partie.
+                </p>
+              ) : (
+                <>
+                  <div className={`card action ${econ.action}`}>
+                    <span className="big">{ACTION_LOOK[econ.action].icon}</span>
+                    <div>
+                      <b>{econ.title}</b>
+                      <small>{econ.reasons[0]}</small>
+                    </div>
+                  </div>
+
+                  {reading === 'on' && shopRead && shopRead.shop.length > 0 && (
+                    <div className={`card ${toBuy.length ? 'gold' : ''}`}>
+                      <h4>{toBuy.length ? 'À acheter dans la boutique' : 'Boutique : rien pour ta compo'}</h4>
+                      <div className="shoprow">
+                        {shopRead.shop.map((c, k) => (
+                          <span key={k} className={planIds.has(c.id) ? 'want' : 'skip'}>
+                            <Icon c={c} />
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {ready.length > 0 && (
+                    <div className="card gold">
+                      <h4>Objet faisable maintenant</h4>
+                      {ready.map((n, k) => (
+                        <div key={k} className="itemline">
+                          {n.item.icon && <img src={n.item.icon} alt="" />}
+                          <b>{n.item.name}</b>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {warnings.length > 0 && (
+                    <div className="card red">
+                      <h4>Placement à corriger</h4>
+                      {warnings.slice(0, 2).map((t, k) => (
+                        <small key={k}>{t.text}</small>
+                      ))}
+                      <button onClick={() => setBoard(autoArrange(board, set))}>Corriger automatiquement</button>
+                    </div>
+                  )}
+
+                  {carry && (
+                    <div className="card">
+                      <h4>Trouver {carry.name} en boutique</h4>
+                      <Bar label={`Niv. ${level}`} value={hitChance(level, [carry], set)} />
+                      {level < 10 && (
+                        <Bar label={`Niv. ${level + 1}`} value={hitChance(level + 1, [carry], set)} tone="next" />
+                      )}
+                    </div>
+                  )}
+
+                  <div className="card">
+                    <div className="gauges">
+                      <label>
+                        Manche
+                        <select value={game.stage} onChange={(e) => setGame({ ...game, stage: e.target.value })}>
+                          {[2, 3, 4, 5, 6, 7].flatMap((st) =>
+                            [1, 2, 3, 5, 6].map((r) => (
+                              <option key={`${st}-${r}`}>
+                                {st}-{r}
+                              </option>
+                            )),
+                          )}
+                        </select>
+                      </label>
+                      <label>
+                        <span>
+                          PV <b className={`hp ${hpTone}`}>{game.hp}</b>
+                        </span>
+                        <input
+                          type="range"
+                          min={1}
+                          max={100}
+                          className={hpTone}
+                          value={game.hp}
+                          onChange={(e) => setGame({ ...game, hp: Number(e.target.value) })}
+                        />
+                      </label>
+                      <label>
+                        <span>
+                          Or <b>{game.gold}</b>
+                          <span className="pips">
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <i key={n} className={interest(game.gold) >= n ? 'on' : ''} />
+                            ))}
+                          </span>
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={game.gold}
+                          onChange={(e) => setGame({ ...game, gold: Number(e.target.value) })}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {tab === 'meta' && (
             <div className="panel">
@@ -422,40 +577,6 @@ export default function App() {
           {tab === 'advice' && (
             <div className="panel">
               <h3>Économie</h3>
-              <div className="situation">
-                <label>
-                  Manche
-                  <select value={game.stage} onChange={(e) => setGame({ ...game, stage: e.target.value })}>
-                    {[2, 3, 4, 5, 6, 7].flatMap((st) =>
-                      [1, 2, 3, 5, 6].map((r) => (
-                        <option key={`${st}-${r}`}>
-                          {st}-{r}
-                        </option>
-                      )),
-                    )}
-                  </select>
-                </label>
-                <label>
-                  Or <b>{game.gold}</b>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={game.gold}
-                    onChange={(e) => setGame({ ...game, gold: Number(e.target.value) })}
-                  />
-                </label>
-                <label>
-                  PV <b>{game.hp}</b>
-                  <input
-                    type="range"
-                    min={1}
-                    max={100}
-                    value={game.hp}
-                    onChange={(e) => setGame({ ...game, hp: Number(e.target.value) })}
-                  />
-                </label>
-              </div>
               {econ ? (
                 <div className={`verdict ${econ.action}`}>
                   <b>{econ.title}</b>
@@ -465,7 +586,8 @@ export default function App() {
                     ))}
                   </ul>
                   <small>
-                    Niveau {situation.level} (réglable en haut). Pourcentages indicatifs, basés sur les tables standard.
+                    Niveau {situation.level}, manche {situation.stage}, {situation.gold} or, {situation.hp} PV (réglables dans
+                    Direct). Pourcentages indicatifs, basés sur les tables standard.
                   </small>
                 </div>
               ) : (

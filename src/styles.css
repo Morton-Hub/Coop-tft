@@ -639,3 +639,146 @@ nav button {
   color: #fff;
   font-weight: 700;
 }
+
+/* ---- Affichage piloté par le conseil : une couleur dominante par action ---- */
+.app { --mode: var(--line); }
+.app.mode-save { --mode: var(--c2); }
+.app.mode-level { --mode: var(--c3); }
+.app.mode-roll { --mode: var(--accent); }
+.app.mode-allin { --mode: var(--c6); }
+.app:not(.mode-idle) {
+  box-shadow: inset 0 0 0 2px var(--mode);
+}
+.app.mode-allin {
+  animation: alarm 1.2s ease-in-out infinite alternate;
+}
+@keyframes alarm {
+  from { box-shadow: inset 0 0 0 2px var(--mode); }
+  to { box-shadow: inset 0 0 0 2px var(--mode), inset 0 0 28px rgba(255, 107, 107, 0.45); }
+}
+.app:not(.mode-idle) header {
+  border-bottom-color: var(--mode);
+}
+.pill {
+  min-height: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border-color: var(--mode);
+  background: color-mix(in srgb, var(--mode) 22%, var(--panel));
+  font-weight: 700;
+  white-space: nowrap;
+}
+nav {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+nav button {
+  flex: 1 0 auto;
+  padding: 6px 9px;
+}
+
+/* Plateau : les unités mal placées, le carry et les achats possibles se voient d'un coup d'œil. */
+/* (un filtre d'ombre serait rogné par le clip-path : on colore l'anneau de la case à la place) */
+.hex.bad {
+  background: var(--c6);
+  animation: blink 0.8s ease-in-out infinite alternate;
+}
+.hex.buy {
+  background: #fff3c4;
+}
+.hex.bad .icon,
+.hex.buy .icon {
+  inset: 10%;
+}
+@keyframes blink {
+  to { background: #5a1f24; }
+}
+.star {
+  position: absolute;
+  top: 6%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--accent);
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+}
+.tipbar.act { border-left-color: var(--mode); font-weight: 700; }
+
+/* Vue Direct : des cartes qui apparaissent et se colorent selon la situation. */
+.live {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 5px;
+}
+.card h4 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.card.gold { border-color: var(--accent); background: #2f2a16; }
+.card.gold h4 { color: var(--accent); }
+.card.red { border-color: var(--c6); background: #331a1d; }
+.card.red h4 { color: var(--c6); }
+.card.action {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  border-color: var(--mode);
+  background: color-mix(in srgb, var(--mode) 20%, var(--panel));
+}
+.card.action .big { font-size: 30px; line-height: 1; }
+.card.action b { font-size: 16px; display: block; }
+.card.action small { color: var(--text); opacity: 0.8; }
+.shoprow { display: flex; gap: 6px; }
+.shoprow .skip { opacity: 0.3; }
+.shoprow .want .icon { box-shadow: 0 0 0 2px var(--accent), 0 0 8px var(--accent); }
+.itemline { display: flex; align-items: center; gap: 8px; }
+.itemline img { width: 28px; height: 28px; border-radius: 5px; }
+.bar {
+  display: grid;
+  grid-template-columns: 46px 1fr 44px;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.bar b { text-align: right; }
+.track { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.fill { height: 100%; background: var(--mode); border-radius: 5px; transition: width 0.3s; }
+.fill.next { background: var(--muted); }
+.gauges {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: 10px;
+  align-items: end;
+}
+.gauges label { display: grid; gap: 2px; font-size: 12px; color: var(--muted); min-width: 0; }
+.gauges b { color: var(--text); font-size: 14px; }
+.gauges input[type='range'] {
+  padding: 0;
+  min-height: 28px;
+  border: 0;
+  background: none;
+  accent-color: var(--accent);
+  width: 100%;
+}
+.gauges input.green { accent-color: var(--c2); }
+.gauges input.orange { accent-color: #ff9f43; }
+.gauges input.red { accent-color: var(--c6); }
+.hp.green { color: var(--c2); }
+.hp.orange { color: #ff9f43; }
+.hp.red { color: var(--c6); }
+.pips { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
+.pips i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.pips i.on { background: var(--accent); }

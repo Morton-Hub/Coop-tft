@@ -17,6 +17,7 @@ lance TFT et glisse Coop TFT en écran partagé. Toutes les versions :
 | Fonction | Détail |
 | --- | --- |
 | Méta en direct | Compos les plus performantes du patch en cours (tier S à C, place moyenne, top 4, taux de victoire, popularité, objets des carrys), recalculées toutes les 4 h à partir des parties des meilleurs joueurs EUW. Un tap charge la compo sur le plateau. |
+| Vue Direct | L'affichage suit le conseil : couleur dominante de l'app selon l'action (vert économise, bleu monte de niveau, or roll, rouge clignotant roll tout), grande carte d'action, cartes qui apparaissent selon la situation (achat en boutique, objet faisable, placement à corriger), jauges PV/or/intérêts, cases mal placées en rouge et carry étoilé sur le plateau. |
 | Économie | Conseil « économise / monte de niveau / roll » selon la manche, l'or, les PV et le coût du carry visé, avec la chance de le trouver en boutique au niveau actuel et au suivant. |
 | Objets | Objets conseillés pour les carrys de la compo chargée, leurs recettes, les composants à prioriser et ce qui est faisable avec ceux en main. |
 | Lecture d'écran (expérimental) | Dans l'app Android : capture de l'écran et lecture du texte sur l'appareil pour repérer la boutique et signaler les unités de la compo. Non conforme aux règles de Riot sur les outils en partie : à activer en connaissance de cause. |

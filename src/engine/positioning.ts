@@ -39,6 +39,8 @@ export function autoArrange(board: Board, set: GameSet): Board {
 export interface Tip {
   level: 'warn' | 'info' | 'ok';
   text: string;
+  /** Case concernée, pour la signaler sur le plateau. */
+  hex?: number;
 }
 
 export function analyze(board: Board, set: GameSet): Tip[] {
@@ -55,9 +57,9 @@ export function analyze(board: Board, set: GameSet): Tip[] {
   for (const u of units) {
     const row = rowOf(u.i);
     if (u.c.role === 'backline' && row <= 1)
-      tips.push({ level: 'warn', text: `${u.c.name} (portée ${u.c.range}) est trop avancé : place-le au fond.` });
+      tips.push({ level: 'warn', text: `${u.c.name} (portée ${u.c.range}) est trop avancé : place-le au fond.`, hex: u.i });
     if (u.c.role === 'tank' && row >= 2)
-      tips.push({ level: 'warn', text: `${u.c.name} est un tank : il doit encaisser en première ligne.` });
+      tips.push({ level: 'warn', text: `${u.c.name} est un tank : il doit encaisser en première ligne.`, hex: u.i });
     if (u.c.role === 'melee' && row === ROWS - 1)
       tips.push({ level: 'info', text: `${u.c.name} est au corps-à-corps : au fond, il perd du temps à marcher.` });
   }
