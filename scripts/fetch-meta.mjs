@@ -90,7 +90,10 @@ try {
     return k.endsWith('emblem') ? 'emblem' + k.slice(0, -6) : k;
   };
   const byName = new Map();
-  for (const i of items) if (!byName.has(nameKey(i.name))) byName.set(nameKey(i.name), i.apiName);
+  // À nom égal, l'objet standard (« TFT_Item_… ») passe avant celui du set en cours, puis avant les variantes d'événement.
+  const rank = (i) => (/^TFT_Item_/.test(i.apiName) ? 0 : new RegExp(`^TFT${meta.set}_Item_`).test(i.apiName) ? 1 : 2);
+  for (const i of items.slice().sort((a, b) => rank(a) - rank(b)))
+    if (!byName.has(nameKey(i.name))) byName.set(nameKey(i.name), i.apiName);
 
   const unknownItems = new Set();
   for (const c of meta.comps)
