@@ -25,6 +25,8 @@ jobs:
       - run: npm run build
       # Le projet Android est généré à partir de capacitor.config.json, il n'est pas versionné.
       - run: npx cap add android
+      # Clé de debug fixe : les mises à jour s'installent par-dessus la version précédente.
+      - run: mkdir -p ~/.android && cp signing/debug.keystore ~/.android/debug.keystore
       - name: Build APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon

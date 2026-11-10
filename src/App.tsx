@@ -38,6 +38,7 @@ export default function App() {
   const [selected, setSelected] = useState<number | null>(null);
   const [traitFilter, setTraitFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [costFilter, setCostFilter] = useState<number | null>(null);
 
   const load = (force: boolean) => {
     setStatus('loading');
@@ -62,9 +63,11 @@ export default function App() {
   const topTip = tips.find((t) => t.level === 'warn') ?? tips[0];
   const full = units.length >= level;
 
+  const costs = useMemo(() => [...new Set(set.champions.map((c) => c.cost))].sort(), [set]);
   const palette = set.champions.filter(
     (c) =>
       (!traitFilter || c.traits.includes(traitFilter)) &&
+      (!costFilter || c.cost === costFilter) &&
       (!search || c.name.toLowerCase().includes(search.toLowerCase())),
   );
 
@@ -98,6 +101,7 @@ export default function App() {
     setBoard({});
     setSelected(null);
     setTraitFilter(null);
+    setCostFilter(null);
   };
   const saveComp = () => {
     const name = prompt('Nom de la compo ?')?.trim();
@@ -225,6 +229,16 @@ export default function App() {
             <div className="panel">
               <div className="filters">
                 <input placeholder="Rechercher…" value={search} onChange={(e) => setSearch(e.target.value)} />
+                {costs.map((n) => (
+                  <button
+                    key={n}
+                    className={`costbtn cost-${n} ${costFilter === n ? 'on' : ''}`}
+                    onClick={() => setCostFilter(costFilter === n ? null : n)}
+                    aria-label={`Coût ${n}`}
+                  >
+                    {n}
+                  </button>
+                ))}
                 {traitFilter && <button onClick={() => setTraitFilter(null)}>{traitFilter} ✕</button>}
               </div>
               <div className="palette">

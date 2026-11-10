@@ -78,7 +78,8 @@ function normalizeSet(raw: RawSet): GameSet {
   champions.sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
   return {
     key: raw.mutator,
-    label: `Set ${raw.number}${raw.name && raw.name !== String(raw.number) ? ` · ${raw.name}` : ''} (${raw.mutator})`,
+    // Le champ « name » de Community Dragon n'est pas fiable (ex. « Set10 » pour le set 18).
+    label: raw.mutator === `TFTSet${raw.number}` ? `Set ${raw.number}` : `Set ${raw.number} (${raw.mutator})`,
     champions,
     traits,
   };

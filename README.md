@@ -51,9 +51,9 @@ release **latest** du repo :
 2. Autoriser l'installation depuis le navigateur quand Android le demande, puis installer.
 3. Lancer TFT, puis glisser Coop TFT en écran partagé.
 
-L'APK est signé avec une clé de debug régénérée à chaque build : pour installer une nouvelle
-version, il faut désinstaller l'ancienne (les compos enregistrées sont alors perdues). Une clé
-de signature fixe est à prévoir avant d'accumuler des données.
+L'APK est signé avec la clé de debug versionnée dans `signing/` : chaque nouvelle version
+s'installe par-dessus la précédente en conservant les compos enregistrées. Cette clé est publique
+dans le repo ; elle convient à un usage personnel, pas à une diffusion sur un store.
 
 L'app Android est une enveloppe [Capacitor](https://capacitorjs.com) autour du même code web ;
 le projet `android/` est généré pendant le build et n'est pas versionné. Une version web reste

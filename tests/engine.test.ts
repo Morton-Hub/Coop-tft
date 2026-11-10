@@ -92,7 +92,7 @@ describe('cdragon', () => {
   };
   it('choisit le set standard le plus récent et filtre les unités non jouables', () => {
     const sets = normalize(raw);
-    expect(sets.map((s) => s.key)).toEqual(['TFTSet99', 'TFTSet99_Mode']); // le 98 n'a pas de traits
+    expect(sets.map((s) => s.label)).toEqual(['Set 99', 'Set 99 (TFTSet99_Mode)']); // le 98 n'a pas de traits
     expect(sets[0].champions).toHaveLength(25);
     expect(sets[0].traits).toEqual([
       { name: 'Alpha', breakpoints: [2, 4] },
