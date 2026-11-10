@@ -1,0 +1,9 @@
+{
+  "appId": "com.mortonhub.cooptft",
+  "appName": "Coop TFT",
+  "webDir": "dist",
+  "backgroundColor": "#0f1220",
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

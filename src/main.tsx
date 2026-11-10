@@ -9,6 +9,7 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+// Dans l'app Android (Capacitor) les fichiers sont déjà embarqués : pas de service worker.
+if (import.meta.env.PROD && 'serviceWorker' in navigator && !('Capacitor' in window)) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }

@@ -1,7 +1,6 @@
-name: Deploy
+name: Deploy web (Pages)
+# Version web facultative : à lancer à la main une fois Pages activé (source « GitHub Actions »).
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read

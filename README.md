@@ -14,7 +14,7 @@ synergies actives, les unités qui les complètent et les défauts de placement.
 | Conseils de placement | Alertes (carry trop avancé, tank au fond, pas de première ligne, carry non couvert, ligne arrière groupée), « Auto-placer », « Inverser » (miroir gauche/droite). |
 | Pistes pour la suite | Plusieurs unités classées selon les paliers qu'elles activent ou rapprochent, filtrées selon ton niveau. |
 | Mes compos | Enregistre tes compos (par exemple recopiées d'une tier list) et recharge-les en un tap. |
-| Écran partagé | Installable depuis Chrome (« Ajouter à l'écran d'accueil »). Volet large (TFT en haut, app en bas) : plateau, synergies et unités sur trois colonnes, sans défilement côté plateau. Volet étroit (côte à côte) : tout empilé. Le conseil prioritaire reste toujours visible sous le plateau. |
+| Écran partagé | Volet large (TFT en haut, app en bas) : plateau, synergies et unités sur trois colonnes, sans défilement côté plateau. Volet étroit (côte à côte) : tout empilé. Le conseil prioritaire reste toujours visible sous le plateau. |
 
 ## Limite assumée : pas de lecture automatique de la partie
 
@@ -34,9 +34,22 @@ npm test         # tests du moteur
 npm run build    # build de production dans dist/
 ```
 
-Sur le Fold : ouvrir l'URL déployée dans Chrome, installer l'app, puis la glisser en écran
-partagé à côté de TFT. Le workflow `.github/workflows/deploy.yml` publie sur GitHub Pages à
-chaque push sur `main` (activer Pages avec la source « GitHub Actions » dans les réglages du repo).
+## Installer l'application Android
+
+Chaque push construit un APK (workflow `Android APK`). Sur `main`, il est publié dans la
+release **latest** du repo :
+
+1. Sur le Fold, ouvrir la page *Releases* du repo et télécharger `coop-tft.apk`.
+2. Autoriser l'installation depuis le navigateur quand Android le demande, puis installer.
+3. Lancer TFT, puis glisser Coop TFT en écran partagé.
+
+L'APK est signé avec une clé de debug régénérée à chaque build : pour installer une nouvelle
+version, il faut désinstaller l'ancienne (les compos enregistrées sont alors perdues). Une clé
+de signature fixe est à prévoir avant d'accumuler des données.
+
+L'app Android est une enveloppe [Capacitor](https://capacitorjs.com) autour du même code web ;
+le projet `android/` est généré pendant le build et n'est pas versionné. Une version web reste
+possible via le workflow manuel `Deploy web (Pages)`.
 
 ## Architecture
 
