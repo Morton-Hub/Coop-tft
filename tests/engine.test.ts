@@ -6,7 +6,8 @@ import { analyze, autoArrange, bestHex, colOf, hex, mirror, rowOf } from '../src
 import { advise, expectedLevel, hitChance, interest, keyLevel } from '../src/engine/economy';
 import { buildable, componentPriority, resolveItems } from '../src/engine/items';
 import { suggest } from '../src/engine/suggest';
-import { detectGame, normText, readHud, readShop } from '../src/screen/match';
+import { cardName, detectGame, guessPlayerName, normText, readHud, readShop } from '../src/screen/match';
+import releves from './fixtures/releves.json';
 import { isNewer } from '../src/update';
 import { boardChampions, countTraits, traitStates } from '../src/engine/traits';
 import { adjusted, aggregate, canon, patchOf, prettyId, signature, type RawMatch, type RawParticipant } from '../src/meta/aggregate';
@@ -243,32 +244,61 @@ describe('lecture de l’écran', () => {
     expect(detectGame(f('Paramètres', 'Wi-Fi', 'Jouer'), set)).toBe('none');
   });
 
-  it('lit la barre du bas et la colonne des joueurs (interface du Set 18)', () => {
-    const l = (text: string, x: number, y: number, h = 30) => ({ text, x, y, w: text.length * 18, h });
+  // Relevés réels d'une partie sur TFT mobile (pseudo remplacé).
+  const real = (releves.releves as { w: number; h: number; lignes: [string, number, number, number, number][] }[]).map(
+    (r) => ({ width: r.w, height: r.h, lines: r.lignes.map(([text, x, y, w, h]) => ({ text, x, y, w, h })) }),
+  );
+  const roster = [
+    'Elise', 'Azir', 'Draven', 'Caitlyn', 'Yunara', 'Warwick', 'Alistar', 'Maître Yi', 'Malphite', 'Sivir',
+    'Fiddlesticks', 'Kennen', 'Nidalee', 'Sentinelle', 'Karma', 'Rammus', 'Krug', 'Maman Raptor', 'Roncier',
+  ].map(champ);
+
+  it('nettoie les noms de cartes pollués par le prix voisin', () => {
+    expect(cardName('95 Caitlyn')).toBe('Caitlyn');
+    expect(cardName('o4 Krug')).toBe('Krug');
+    expect(cardName('3 Maman Raptor 3')).toBe('Maman Raptor');
+    expect(cardName('4|| Sentinelle')).toBe('Sentinelle');
+    expect(cardName('Vi')).toBe('Vi');
+  });
+
+  it('lit la boutique sur les relevés réels', () => {
+    expect(real.map((f) => readShop(f, roster).shop.map((c) => c.name))).toEqual([
+      ['Elise', 'Azir', 'Draven', 'Caitlyn', 'Yunara'],
+      ['Warwick', 'Draven', 'Yunara', 'Alistar', 'Maître Yi'],
+      ['Malphite', 'Sivir', 'Fiddlesticks', 'Kennen', 'Malphite'],
+      ['Nidalee', 'Sentinelle', 'Karma', 'Rammus'],
+      ['Krug', 'Maman Raptor', 'Roncier', 'Krug', 'Krug'],
+    ]);
+  });
+
+  it('lit manche, niveau, XP, or et probabilités sur les relevés réels', () => {
+    expect(real.map((f) => readHud(f))).toEqual([
+      { stage: '5-6', level: 7, xp: { have: 18, total: 56 }, gold: 39 }, // « 939 » : pièce lue comme un 9
+      { stage: '5-7', level: 7, xp: { have: 20, total: 56 }, gold: 46 },
+      { stage: '6-1', level: 8, xp: { have: 2, total: 68 }, gold: 22, odds: [15, 20, 32, 30, 3] },
+      { stage: '6-3', level: 8, xp: { have: 6, total: 68 }, gold: 12, odds: [15, 20, 32, 30, 3] },
+      { stage: '6-5', xp: { have: 8, total: 68 }, gold: 10, odds: [15, 20, 32, 30, 3] }, // niveau non lu cette fois
+    ]);
+    expect(real.every((f) => detectGame(f, []) === 'game')).toBe(true);
+  });
+
+  it('lit ses PV dans la liste des joueurs et devine son pseudo', () => {
+    const l = (text: string, x: number, y: number, w = 150, h = 34) => ({ text, x, y, w, h });
     const frame = {
-      width: 1800,
-      height: 1000,
+      width: 2256,
+      height: 2504,
       lines: [
-        l('3-5', 880, 20),
-        l('Lvl. 8', 330, 940),
-        l('15/68', 440, 942),
-        l('15%', 540, 944), l('20%', 590, 944), l('32%', 650, 944), l('30%', 700, 944), l('3%', 760, 944),
-        l('31', 960, 940), // or
-        l('15', 1075, 940), // série
-        l('100', 1675, 290, 44), // ses propres PV : plus gros, sans pseudo
-        l('Tobakka', 1640, 375), l('72', 1725, 378),
-        l('Keto', 1670, 452), l('34', 1725, 455),
-        l('T1A', 1675, 528), l('25', 1725, 530),
-        l('3', 110, 370), // compteur de trait à gauche : ignoré
+        l('Acheter XP', 47, 1834, 209, 31),
+        l('MonPseudo', 185, 1330), // étiquette de sa Petite Légende, sur le plateau
+        l('Anaïah', 2030, 1120, 90), l('64', 2085, 1165, 40),
+        l('Mon Pseudo', 1985, 1340), l('× 53', 2055, 1385, 70),
+        l('Kabiten', 2020, 1230, 100), l('62', 2085, 1275, 40),
+        l('6', 2168, 1102, 30, 43), // cadenas de boutique : ne doit plus être pris pour des PV
       ],
     };
-    expect(readHud(frame)).toEqual({ stage: '3-5', level: 8, gold: 31, hp: 100, odds: [15, 20, 32, 30, 3] });
-    // Pourcentages lus d'un seul bloc : même résultat.
-    const merged = { ...frame, lines: [...frame.lines.filter((x) => !x.text.endsWith('%')), l('15% 20% 32% 30% 3%', 540, 944)] };
-    expect(readHud(merged)).toMatchObject({ gold: 31, odds: [15, 20, 32, 30, 3] });
-    // Sans ligne de niveau, on ne devine pas l'or ; sans ligne plus grosse, pas de PV.
-    const flat = frame.lines.filter((x) => x.text !== 'Lvl. 8').map((x) => ({ ...x, h: 30 }));
-    expect(readHud({ ...frame, lines: flat })).toEqual({ stage: '3-5' });
+    expect(guessPlayerName(frame)).toBe('Mon Pseudo');
+    expect(readHud(frame, 'Mon Pseudo').hp).toBe(53);
+    expect(readHud(frame).hp).toBeUndefined();
   });
 
   it('ne déclare pas de boutique sur un seul nom', () => {
@@ -302,7 +332,7 @@ describe('économie', () => {
 
   it('économise quand tout va bien, dépense quand les PV baissent', () => {
     expect(advise(sit({ gold: 30, stage: '3-5', level: 6 }), plan, DEMO_SET).action).toBe('save');
-    expect(advise(sit({ gold: 60, hp: 45 }), plan, DEMO_SET).action).toBe('level');
+    expect(advise(sit({ gold: 70, hp: 45 }), plan, DEMO_SET).action).toBe('level'); // niveau 7 -> 8 : 56 or
     expect(advise(sit({ gold: 35, hp: 45, level: 8 }), plan, DEMO_SET).action).toBe('roll');
     expect(advise(sit({ gold: 12, hp: 45, level: 8 }), plan, DEMO_SET).action).toBe('save');
     expect(advise(sit({ gold: 20, hp: 20 }), plan, DEMO_SET).action).toBe('allin');

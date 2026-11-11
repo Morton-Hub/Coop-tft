@@ -1,8 +1,8 @@
 import type { Champion, GameSet } from '../data/types';
 
 /*
- * Tables de TFT. Les niveaux 3, 4, 8 et 9 ont été recoupés avec des sources Set 18 ; les niveaux
- * 5 à 7 et 10, ainsi que les coûts de niveau, sont les valeurs classiques, non vérifiées pour ce set.
+ * Tables de TFT. Probabilités des niveaux 4, 5 et 8 et coûts des niveaux 4 à 8 relevés sur des
+ * captures de partie Set 18 ; niveaux 3 et 9 recoupés en ligne ; niveaux 6, 7 et 10 non vérifiés.
  */
 /** Probabilité (en %) qu'une case de boutique propose une unité de coût 1 à 5, par niveau. */
 export const SHOP_ODDS: Record<number, number[]> = {
@@ -18,7 +18,7 @@ export const SHOP_ODDS: Record<number, number[]> = {
   10: [5, 10, 20, 40, 25],
 };
 /** Or nécessaire pour passer au niveau suivant en partant de 0 XP (4 or = 4 XP). */
-export const GOLD_TO_LEVEL: Record<number, number> = { 1: 2, 2: 2, 3: 6, 4: 10, 5: 20, 6: 36, 7: 48, 8: 76, 9: 84 };
+export const GOLD_TO_LEVEL: Record<number, number> = { 1: 2, 2: 2, 3: 6, 4: 10, 5: 20, 6: 36, 7: 56, 8: 68, 9: 84 };
 /** Niveau où l'on cherche son carry, selon son coût. */
 const KEY_LEVEL: Record<number, number> = { 1: 5, 2: 6, 3: 7, 4: 8, 5: 9 };
 /** Courbe de niveau standard : [manche, niveau attendu]. */
@@ -37,6 +37,8 @@ export interface Situation {
   hp: number;
   /** Manche sous la forme « 3-2 ». */
   stage: string;
+  /** Or réellement nécessaire pour le prochain niveau, quand l'XP est lue à l'écran. */
+  levelCost?: number;
 }
 export interface Plan {
   /** Unités recherchées (celles de la compo visée). */
@@ -86,7 +88,7 @@ export function advise(sit: Situation, plan: Plan, set: GameSet): Advice {
   // On dépense au niveau où le carry se trouve le mieux. Le niveau final des gagnants (plan.keyLevel)
   // est un objectif de fin de partie, pas le moment de roll : il est donné à titre d'information.
   const key = keyLevel(plan.carryCost);
-  const levelCost = GOLD_TO_LEVEL[level];
+  const levelCost = sit.levelCost ?? GOLD_TO_LEVEL[level];
   const canLevel = levelCost !== undefined && gold >= levelCost;
   const reasons: string[] = [];
 

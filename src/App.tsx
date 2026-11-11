@@ -9,7 +9,7 @@ import { suggest } from './engine/suggest';
 import { boardChampions, traitStates } from './engine/traits';
 import { canon, prettyId, type MetaComp } from './meta/aggregate';
 import { ago, loadMeta, type MetaResult } from './meta/load';
-import { detectGame, readHud, readShop, type Hud, type ScreenFrame } from './screen/match';
+import { detectGame, guessPlayerName, readHud, readShop, type Hud, type ScreenFrame } from './screen/match';
 import { requestSnapshot, screenReaderAvailable, startScreenReader } from './screen/reader';
 import { useStored } from './storage';
 import { APK_URL, updateAvailable } from './update';
@@ -64,7 +64,8 @@ export default function App() {
   const [game, setGame] = useStored('coop-tft:game', { stage: '2-1', gold: 10, hp: 100 });
   const [held, setHeld] = useStored<Record<string, number>>('coop-tft:held', {});
   const [autoFill, setAutoFill] = useStored('coop-tft:autofill', true);
-  const [autoMoney, setAutoMoney] = useStored('coop-tft:automoney', false);
+  const [player, setPlayer] = useStored('coop-tft:pseudo', '');
+  const nameVotes = useRef<Record<string, number>>({});
   const [samples, setSamples] = useStored<{ t: number; f: ScreenFrame; lu: Hud }[]>('coop-tft:samples', []);
   const lastSample = useRef(0);
   const autoShots = useRef(0);
@@ -125,14 +126,19 @@ export default function App() {
   }, [plan, byCanon, units]);
   // Probabilités de boutique lues à l'écran : valables seulement pour le niveau où elles ont été lues.
   const liveOdds = reading === 'on' && autoRead.odds && autoRead.level === level ? autoRead.odds : undefined;
-  const situation: Situation = { level, ...game };
+  // Coût réel du prochain niveau, d'après l'XP lue à l'écran (4 or donnent 4 XP).
+  const levelCost =
+    reading === 'on' && autoRead.xp && autoRead.level === level
+      ? Math.ceil((autoRead.xp.total - autoRead.xp.have) / 4) * 4
+      : undefined;
+  const situation: Situation = { level, ...game, levelCost };
   const econ = useMemo(
     () => (carry ? advise(
-            { level, ...game },
+            { level, ...game, levelCost },
             { targets: [carry], carryCost: carry.cost, keyLevel: plan?.level, reroll: plan?.reroll, odds: liveOdds },
             set,
           ) : null),
-    [level, game, units, carry, set, plan, liveOdds],
+    [level, game, units, carry, set, plan, liveOdds, levelCost],
   );
   const itemNeeds = useMemo(
     () =>
@@ -170,25 +176,32 @@ export default function App() {
   // Remplissage automatique : une valeur n'est retenue que si deux lectures successives concordent.
   useEffect(() => {
     if (!frame || !shopRead) return;
-    const hud = readHud(frame);
+    // Pseudo : retenu quand le même nom est repéré trois fois à la fois dans la liste et sur le plateau.
+    const guess = guessPlayerName(frame);
+    if (guess && !player) {
+      nameVotes.current[guess] = (nameVotes.current[guess] ?? 0) + 1;
+      if (nameVotes.current[guess] >= 3) setPlayer(guess);
+    }
+    const hud = readHud(frame, player);
     const prev = lastHud.current;
     lastHud.current = hud;
     const stable: Hud = {};
     for (const k of ['stage', 'level', 'gold', 'hp'] as const)
       if (hud[k] !== undefined && hud[k] === prev[k]) (stable as Record<string, unknown>)[k] = hud[k];
     if (hud.odds && hud.odds.join() === prev.odds?.join()) stable.odds = hud.odds;
+    if (hud.xp && hud.xp.have === prev.xp?.have && hud.xp.total === prev.xp?.total) stable.xp = hud.xp;
     setAutoRead(stable);
-    // Relevés automatiques : une image de phase d'achat par minute, les 5 dernières sont gardées
+    // Relevés automatiques : un par minute en partie (boutique ouverte ou non), les 6 derniers sont gardés
     // pour pouvoir régler la lecture après la partie sans rien faire pendant.
-    if (shopRead.shop.length >= 3 && Date.now() - lastSample.current > 60000) {
+    const playing = shopRead.shop.length > 0 || hud.stage !== undefined || hud.level !== undefined;
+    if (playing && Date.now() - lastSample.current > 60000) {
       lastSample.current = Date.now();
       const { at: _at, ...f } = frame;
-      setSamples([...samples.slice(-4), { t: Date.now(), f, lu: hud }]);
+      setSamples([...samples.slice(-5), { t: Date.now(), f, lu: hud }]);
     }
     // Images pour le réglage : une par minute dès qu'une partie est en cours (achat, combat, carrousel),
     // quinze au plus par session de lecture, enregistrées dans la galerie.
-    const inGame = shopRead.shop.length > 0 || hud.stage !== undefined || hud.level !== undefined;
-    if (inGame && autoShots.current < 15 && Date.now() - lastShot.current > 60000) {
+    if (playing && autoShots.current < 15 && Date.now() - lastShot.current > 60000) {
       lastShot.current = Date.now();
       autoShots.current++;
       requestSnapshot();
@@ -197,15 +210,13 @@ export default function App() {
     if (stable.level !== undefined && stable.level !== level) setLevel(stable.level);
     const next = {
       stage: stable.stage ?? game.stage,
-      // Or et PV : lecture encore peu fiable, appliquée seulement si l'option est activée.
-      gold: autoMoney ? (stable.gold ?? game.gold) : game.gold,
-      hp: autoMoney && stable.hp !== undefined && stable.hp >= 1 ? stable.hp : game.hp,
+      gold: stable.gold ?? game.gold,
+      hp: stable.hp !== undefined && stable.hp >= 1 ? stable.hp : game.hp,
     };
     if (next.stage !== game.stage || next.gold !== game.gold || next.hp !== game.hp) setGame(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame]);
-  const auto = (k: keyof Hud) =>
-    reading === 'on' && autoFill && autoRead[k] !== undefined && (autoMoney || (k !== 'gold' && k !== 'hp'));
+  const auto = (k: keyof Hud) => reading === 'on' && autoFill && autoRead[k] !== undefined;
 
   const [copied, setCopied] = useState(false);
   const copyDiagnostic = async () => {
@@ -830,17 +841,18 @@ export default function App() {
                     <>
                       <label className="check">
                         <input type="checkbox" checked={autoFill} onChange={(e) => setAutoFill(e.target.checked)} />
-                        Remplir automatiquement la manche et le niveau
-                      </label>
-                      <label className="check">
-                        <input type="checkbox" checked={autoMoney} onChange={(e) => setAutoMoney(e.target.checked)} />
-                        Remplir aussi l'or et les PV (nouvelles règles, à confirmer)
+                        Remplir automatiquement manche, niveau, or et PV
                       </label>
                       <p className="readout">
                         Lu à l'écran : manche <b>{autoRead.stage ?? '—'}</b> · niveau <b>{autoRead.level ?? '—'}</b> · or{' '}
                         <b>{autoRead.gold ?? '—'}</b> · PV <b>{autoRead.hp ?? '—'}</b> · boutique{' '}
-                        <b>{autoRead.odds ? autoRead.odds.join('/') : '—'}</b>
+                        <b>{autoRead.odds ? autoRead.odds.join('/') : '—'}</b> · XP{' '}
+                        <b>{autoRead.xp ? `${autoRead.xp.have}/${autoRead.xp.total}` : '—'}</b>
                       </p>
+                      <label className="check">
+                        Ton pseudo en jeu (pour lire tes PV)
+                        <input value={player} onChange={(e) => setPlayer(e.target.value)} placeholder="détecté en partie" />
+                      </label>
                       <button onClick={() => requestSnapshot()}>Enregistrer une image maintenant</button>
                       <p className="readout">
                         Images enregistrées dans la galerie (album CoopTFT) : <b>{shots.saved}</b>

@@ -31,6 +31,18 @@ export function normText(s: string): string {
 }
 
 /**
+ * Nettoie un nom lu sur une carte de boutique : le prix de la carte voisine s'y retrouve souvent collé
+ * (« 95 Caitlyn », « o4 Krug », « 3 Maman Raptor 3 »). On retire les fragments de tête contenant un
+ * chiffre ou trop courts, et les nombres de queue.
+ */
+export function cardName(text: string): string {
+  const tokens = text.trim().split(/\s+/);
+  while (tokens.length > 1 && (/\d/.test(tokens[0]) || !/[a-zA-ZÀ-ÿ]{2}/.test(tokens[0]))) tokens.shift();
+  while (tokens.length > 1 && /^\d+$/.test(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.join(' ');
+}
+
+/**
  * Repère les noms de champions dans le texte lu à l'écran. La boutique est la rangée
  * horizontale qui en aligne le plus (au moins deux), la plus basse en cas d'égalité.
  */
@@ -38,7 +50,7 @@ export function readShop(frame: ScreenFrame, champions: Champion[]): ShopRead {
   const byName = new Map(champions.map((c) => [normText(c.name), c]));
   const hits: { c: Champion; x: number; y: number }[] = [];
   for (const line of frame.lines) {
-    const c = byName.get(normText(line.text));
+    const c = byName.get(normText(line.text)) ?? byName.get(normText(cardName(line.text)));
     if (c) hits.push({ c, x: line.x + line.w / 2, y: line.y + line.h / 2 });
   }
 
@@ -66,6 +78,7 @@ const LOBBY_WORDS = ['jouer', 'boutique', 'passedecombat', 'equipements', 'play'
 export function detectGame(frame: ScreenFrame, champions: Champion[]): GameState {
   const read = readShop(frame, champions);
   if (read.shop.length || read.seen.length >= 2) return 'game';
+  if (frame.lines.some((l) => ['acheterxp', 'buyxp'].includes(normText(l.text)))) return 'game';
   const texts = new Set(frame.lines.map((l) => normText(l.text)));
   return LOBBY_WORDS.filter((w) => texts.has(w)).length >= 2 ? 'lobby' : 'none';
 }
@@ -77,6 +90,8 @@ export interface Hud {
   hp?: number;
   /** Probabilités de boutique affichées par le jeu pour le niveau actuel (coûts 1 à 5, en %). */
   odds?: number[];
+  /** Progression d'XP vers le niveau suivant. */
+  xp?: { have: number; total: number };
 }
 
 const center = (l: ScreenLine) => ({ x: l.x + l.w / 2, y: l.y + l.h / 2 });
@@ -91,56 +106,85 @@ export function readPlayerName(frame: ScreenFrame): string | undefined {
 }
 
 /**
- * Lit manche, niveau, or, PV et probabilités de boutique dans le texte de l'écran.
- * Règles calées sur l'interface du Set 18 :
+ * Lit manche, niveau, XP, or, PV et probabilités de boutique dans le texte de l'écran.
+ * Règles calées sur des relevés réels de TFT mobile (Set 18), toutes relatives au bouton
+ * « Acheter XP » pour ne pas dépendre de la taille de la fenêtre :
  * - manche : un texte de la forme « 3-2 » ;
- * - niveau : « Lvl. 8 », « Niv. 8 », « Niveau 8 » ;
- * - barre du bas, sur la ligne du niveau : « Lvl. 8  15/68  15% 20% 32% 30% 3%  31  15 » ;
- *   les cinq pourcentages sont les probabilités de boutique, le premier nombre isolé qui suit est l'or
- *   (le suivant est la série) ;
- * - PV : dans la colonne des joueurs à droite, sa propre ligne est écrite plus gros et sans pseudo.
+ * - niveau : le chiffre seul dans le petit rond, juste à droite sous « Acheter XP » ;
+ * - XP : « 18/56 », au-dessus du bouton ;
+ * - or : le nombre écrit en très gros en bas à droite ; l'icône de pièce est souvent lue comme un
+ *   chiffre collé devant (« 939 » pour 39 or), ce qui se voit à la largeur du texte ;
+ * - probabilités : la ligne aux « % » sous la boutique, quand elle est lue sans ambiguïté ;
+ * - PV : dans la liste des joueurs (visible boutique fermée), le nombre sous son propre pseudo.
  */
-export function readHud(frame: ScreenFrame): Hud {
+export function readHud(frame: ScreenFrame, playerName?: string): Hud {
   const hud: Hud = {};
-  const numbers: { v: number; x: number; y: number; h: number }[] = [];
-  let levelLine: ScreenLine | undefined;
+  let buyXp: ScreenLine | undefined;
   for (const l of frame.lines) {
     const text = l.text.trim();
     const stage = /^([1-9])\s*[-–]\s*([1-7])$/.exec(text);
     if (stage && !hud.stage) hud.stage = `${stage[1]}-${stage[2]}`;
-    const level = /\b(?:niv(?:eau)?|lvl?|level)\.?\s*(\d{1,2})\b/i.exec(text);
-    if (level && !hud.level && Number(level[1]) >= 1 && Number(level[1]) <= 10) {
-      hud.level = Number(level[1]);
-      levelLine = l;
+    const n = normText(text);
+    if (!buyXp && (n === 'acheterxp' || n === 'buyxp')) buyXp = l;
+
+    // « 15% 20 %132 % 30% 3% » : une icône est parfois lue comme un « 1 » collé devant une valeur.
+    if (!hud.odds && (text.match(/%/g)?.length ?? 0) >= 3) {
+      const values = [...text.matchAll(/(\d{1,3})\s*%/g)].map((m) => Number(m[1])).map((v) => (v > 100 ? v % 100 : v));
+      if (values.length === 5 && values.reduce((t, v) => t + v, 0) === 100) hud.odds = values;
     }
-    if (/^\d{1,3}$/.test(text)) numbers.push({ v: Number(text), ...center(l), h: l.h });
   }
 
-  if (levelLine) {
-    const lc = center(levelLine);
-    const sameRow = (y: number) => Math.abs(y - lc.y) <= levelLine!.h * 1.5;
-    // Les pourcentages peuvent être lus en un seul bloc ou un par un.
-    const percents: { v: number; x: number }[] = [];
+  if (buyXp) {
+    const right = buyXp.x + buyXp.w;
     for (const l of frame.lines) {
-      if (!sameRow(center(l).y)) continue;
-      const found = [...l.text.matchAll(/(\d{1,3})\s*%/g)];
-      found.forEach((m, k) => percents.push({ v: Number(m[1]), x: l.x + (l.w * (k + 0.5)) / found.length }));
-    }
-    percents.sort((a, b) => a.x - b.x);
-    const sum = percents.reduce((t, p) => t + p.v, 0);
-    if (percents.length === 5 && sum >= 95 && sum <= 105) hud.odds = percents.map((p) => p.v);
+      const text = l.text.trim();
+      const c = center(l);
+      if (/^\d{1,2}$/.test(text) && l.x >= right - 12 && l.x <= right + 90 && l.y >= buyXp.y + 40 && l.y <= buyXp.y + 150) {
+        const v = Number(text);
+        if (v >= 1 && v <= 10) hud.level = v;
+      }
+      const xp = /(\d{1,3})\s*\/\s*(\d{1,3})/.exec(text);
+      if (xp && !hud.xp && l.x < frame.width * 0.2 && l.y < buyXp.y && l.y > buyXp.y - 260 && Number(xp[1]) < Number(xp[2]))
+        hud.xp = { have: Number(xp[1]), total: Number(xp[2]) };
 
-    const after = percents.length ? percents[percents.length - 1].x : lc.x;
-    const gold = numbers.filter((n) => sameRow(n.y) && n.x > after).sort((a, b) => a.x - b.x)[0];
-    if (gold && gold.v <= 300) hud.gold = gold.v;
+      const digits = /^\D{0,2}\s?(\d{1,4})$/.exec(text);
+      if (digits && c.x > frame.width * 0.85 && l.h >= buyXp.h * 1.4 && l.y > buyXp.y - 80) {
+        let value = digits[1];
+        // Largeur attendue pour ces chiffres seuls ; nettement plus large = l'icône de pièce a été lue avec.
+        const allDigits = /^\d+$/.test(text);
+        if (allDigits && value.length >= 2 && l.w > value.length * l.h * 0.46 * 1.3) value = value.slice(1);
+        hud.gold = Number(value);
+      }
+    }
   }
 
-  // Colonne des joueurs : au moins trois nombres ≤ 100 empilés tout à droite ; le sien est le plus gros.
-  const column = numbers.filter((n) => n.x > frame.width * 0.8 && n.v <= 100);
-  if (column.length >= 3) {
-    const mine = column.slice().sort((a, b) => b.h - a.h)[0];
-    const others = column.filter((n) => n !== mine).map((n) => n.h);
-    if (mine.h >= Math.max(...others) * 1.2) hud.hp = mine.v;
+  const wanted = playerName ? normText(playerName) : '';
+  if (wanted.length >= 3) {
+    const mine = frame.lines.find((l) => center(l).x > frame.width * 0.7 && normText(l.text).includes(wanted));
+    if (mine) {
+      // Pseudo et PV parfois lus sur une même ligne (« Pseudo 53 »), sinon PV juste en dessous.
+      const inline = /(\d{1,3})\D*$/.exec(mine.text);
+      const below = frame.lines
+        .filter((l) => l !== mine && l.y > mine.y + mine.h * 0.4 && l.y < mine.y + mine.h * 2.6 && l.x + l.w > mine.x + mine.w * 0.4 && l.x < mine.x + mine.w + 40)
+        .map((l) => /(\d{1,3})\D*$/.exec(l.text.trim()))
+        .find((m) => m && Number(m[1]) <= 100);
+      const hp = inline && Number(inline[1]) <= 100 ? Number(inline[1]) : below ? Number(below[1]) : undefined;
+      if (hp !== undefined) hud.hp = hp;
+    }
   }
   return hud;
+}
+
+/**
+ * Devine son propre pseudo : c'est le nom qui apparaît à la fois dans la liste des joueurs (à droite)
+ * et sur l'étiquette de sa Petite Légende, sur le plateau.
+ */
+export function guessPlayerName(frame: ScreenFrame): string | undefined {
+  const board = frame.lines.filter((l) => center(l).x < frame.width * 0.6 && /[a-zA-ZÀ-ÿ]{3}/.test(l.text));
+  for (const l of frame.lines) {
+    if (center(l).x < frame.width * 0.75 || !/[a-zA-ZÀ-ÿ]{3}/.test(l.text)) continue;
+    const n = normText(l.text);
+    if (n.length >= 3 && board.some((b) => normText(b.text) === n)) return l.text.trim();
+  }
+  return undefined;
 }
