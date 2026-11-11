@@ -47,6 +47,8 @@ export interface Plan {
   keyLevel?: number;
   /** Compo de reroll constatée dans les parties, quand la méta le fournit. */
   reroll?: boolean;
+  /** Probabilités de boutique du niveau actuel, lues à l'écran. */
+  odds?: number[];
 }
 export type Action = 'save' | 'level' | 'roll' | 'allin';
 export interface Advice {
@@ -65,8 +67,9 @@ export const keyLevel = (carryCost: number) => KEY_LEVEL[Math.min(5, Math.max(1,
 export const interest = (gold: number) => Math.min(5, Math.floor(gold / 10));
 
 /** Chance (0-1) qu'une boutique de 5 cases contienne au moins une des unités recherchées. */
-export function hitChance(level: number, targets: Champion[], set: GameSet): number {
-  const odds = SHOP_ODDS[Math.min(10, Math.max(1, level))];
+export function hitChance(level: number, targets: Champion[], set: GameSet, liveOdds?: number[]): number {
+  // Les probabilités lues à l'écran, quand on les a, priment sur la table.
+  const odds = liveOdds?.length === 5 ? liveOdds : SHOP_ODDS[Math.min(10, Math.max(1, level))];
   const perCost = new Map<number, number>();
   for (const c of set.champions) perCost.set(c.cost, (perCost.get(c.cost) ?? 0) + 1);
   let slot = 0;
@@ -88,7 +91,7 @@ export function advise(sit: Situation, plan: Plan, set: GameSet): Advice {
   const reasons: string[] = [];
 
   if (plan.targets.length) {
-    const now = hitChance(level, plan.targets, set);
+    const now = hitChance(level, plan.targets, set, plan.odds);
     const what = plan.targets.length === 1 ? plan.targets[0].name : 'une unité de ta compo';
     let line = `Au niveau ${level}, une boutique montre ${what} ${pct(now)} du temps`;
     if (level < 10) line += ` ; au niveau ${level + 1}, ${pct(hitChance(level + 1, plan.targets, set))}`;

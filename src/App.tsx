@@ -9,7 +9,7 @@ import { suggest } from './engine/suggest';
 import { boardChampions, traitStates } from './engine/traits';
 import { canon, prettyId, type MetaComp } from './meta/aggregate';
 import { ago, loadMeta, type MetaResult } from './meta/load';
-import { detectGame, readHud, readPlayerName, readShop, type Hud, type ScreenFrame } from './screen/match';
+import { detectGame, readHud, readShop, type Hud, type ScreenFrame } from './screen/match';
 import { screenReaderAvailable, startScreenReader } from './screen/reader';
 import { useStored } from './storage';
 import { APK_URL, updateAvailable } from './update';
@@ -63,7 +63,6 @@ export default function App() {
   const [plan, setPlan] = useStored<MetaComp | null>('coop-tft:plan', null);
   const [game, setGame] = useStored('coop-tft:game', { stage: '2-1', gold: 10, hp: 100 });
   const [held, setHeld] = useStored<Record<string, number>>('coop-tft:held', {});
-  const [player, setPlayer] = useStored('coop-tft:player', '');
   const [autoFill, setAutoFill] = useStored('coop-tft:autofill', true);
   const [autoMoney, setAutoMoney] = useStored('coop-tft:automoney', false);
   const [samples, setSamples] = useStored<{ t: number; f: ScreenFrame; lu: Hud }[]>('coop-tft:samples', []);
@@ -121,14 +120,16 @@ export default function App() {
     const ranged = units.filter((u) => u.role === 'backline' || u.role === 'ranged');
     return (ranged.length ? ranged : units).slice().sort((a, b) => b.cost - a.cost)[0];
   }, [plan, byCanon, units]);
+  // Probabilités de boutique lues à l'écran : valables seulement pour le niveau où elles ont été lues.
+  const liveOdds = reading === 'on' && autoRead.odds && autoRead.level === level ? autoRead.odds : undefined;
   const situation: Situation = { level, ...game };
   const econ = useMemo(
     () => (carry ? advise(
             { level, ...game },
-            { targets: [carry], carryCost: carry.cost, keyLevel: plan?.level, reroll: plan?.reroll },
+            { targets: [carry], carryCost: carry.cost, keyLevel: plan?.level, reroll: plan?.reroll, odds: liveOdds },
             set,
           ) : null),
-    [level, game, units, carry, set, plan],
+    [level, game, units, carry, set, plan, liveOdds],
   );
   const itemNeeds = useMemo(
     () =>
@@ -166,14 +167,13 @@ export default function App() {
   // Remplissage automatique : une valeur n'est retenue que si deux lectures successives concordent.
   useEffect(() => {
     if (!frame || !shopRead) return;
-    const name = readPlayerName(frame);
-    if (name && name !== player) setPlayer(name);
-    const hud = readHud(frame, shopRead, player);
+    const hud = readHud(frame);
     const prev = lastHud.current;
     lastHud.current = hud;
     const stable: Hud = {};
     for (const k of ['stage', 'level', 'gold', 'hp'] as const)
       if (hud[k] !== undefined && hud[k] === prev[k]) (stable as Record<string, unknown>)[k] = hud[k];
+    if (hud.odds && hud.odds.join() === prev.odds?.join()) stable.odds = hud.odds;
     setAutoRead(stable);
     // Relevés automatiques : une image de phase d'achat par minute, les 5 dernières sont gardées
     // pour pouvoir régler la lecture après la partie sans rien faire pendant.
@@ -205,7 +205,6 @@ export default function App() {
       etat: gameState,
       boutique: shopRead?.shop.map((c) => c.name),
       lu: autoRead,
-      joueur: player,
       lignes: frame.lines.map((l) => [l.text, l.x, l.y, l.w, l.h]),
     });
     try {
@@ -225,7 +224,6 @@ export default function App() {
 
   const copySamples = async () => {
     const text = JSON.stringify({
-      joueur: player,
       releves: samples.map((x) => ({
         w: x.f.width,
         h: x.f.height,
@@ -532,7 +530,8 @@ export default function App() {
                   {carry && (
                     <div className="card">
                       <h4>Trouver {carry.name} en boutique</h4>
-                      <Bar label={`Niv. ${level}`} value={hitChance(level, [carry], set)} />
+                      <Bar label={`Niv. ${level}`} value={hitChance(level, [carry], set, liveOdds)} />
+                      {liveOdds && <small>Probabilités lues à l'écran : {liveOdds.join(' · ')} %</small>}
                       {level < 10 && (
                         <Bar label={`Niv. ${level + 1}`} value={hitChance(level + 1, [carry], set)} tone="next" />
                       )}
@@ -821,16 +820,13 @@ export default function App() {
                       </label>
                       <label className="check">
                         <input type="checkbox" checked={autoMoney} onChange={(e) => setAutoMoney(e.target.checked)} />
-                        Remplir aussi l'or et les PV (lecture en cours de réglage)
+                        Remplir aussi l'or et les PV (nouvelles règles, à confirmer)
                       </label>
                       <p className="readout">
                         Lu à l'écran : manche <b>{autoRead.stage ?? '—'}</b> · niveau <b>{autoRead.level ?? '—'}</b> · or{' '}
-                        <b>{autoRead.gold ?? '—'}</b> · PV <b>{autoRead.hp ?? '—'}</b>
+                        <b>{autoRead.gold ?? '—'}</b> · PV <b>{autoRead.hp ?? '—'}</b> · boutique{' '}
+                        <b>{autoRead.odds ? autoRead.odds.join('/') : '—'}</b>
                       </p>
-                      <label className="check">
-                        Pseudo en jeu (pour retrouver tes PV)
-                        <input value={player} onChange={(e) => setPlayer(e.target.value)} placeholder="lu au menu de TFT" />
-                      </label>
                       <button onClick={copyDiagnostic} disabled={!frame}>
                         {copied ? 'Copié ✓' : 'Copier le diagnostic'}
                       </button>

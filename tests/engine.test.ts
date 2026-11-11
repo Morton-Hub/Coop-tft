@@ -6,7 +6,7 @@ import { analyze, autoArrange, bestHex, colOf, hex, mirror, rowOf } from '../src
 import { advise, expectedLevel, hitChance, interest, keyLevel } from '../src/engine/economy';
 import { buildable, componentPriority, resolveItems } from '../src/engine/items';
 import { suggest } from '../src/engine/suggest';
-import { detectGame, normText, readHud, readPlayerName, readShop } from '../src/screen/match';
+import { detectGame, normText, readHud, readShop } from '../src/screen/match';
 import { isNewer } from '../src/update';
 import { boardChampions, countTraits, traitStates } from '../src/engine/traits';
 import { adjusted, aggregate, canon, patchOf, prettyId, signature, type RawMatch, type RawParticipant } from '../src/meta/aggregate';
@@ -243,36 +243,32 @@ describe('lecture de l’écran', () => {
     expect(detectGame(f('Paramètres', 'Wi-Fi', 'Jouer'), set)).toBe('none');
   });
 
-  it('lit manche, niveau, or et PV autour de la boutique', () => {
+  it('lit la barre du bas et la colonne des joueurs (interface du Set 18)', () => {
+    const l = (text: string, x: number, y: number, h = 30) => ({ text, x, y, w: text.length * 18, h });
     const frame = {
-      width: 2000,
+      width: 1800,
       height: 1000,
       lines: [
-        line('3-2', 950, 20),
-        line('Niv. 6', 100, 780),
-        line('12/36', 250, 780), // XP : ignoré
-        line('47', 980, 800), // or, au-dessus du centre de la boutique
-        line('8', 300, 700), // autre nombre, plus loin du centre
-        line('Ezreal', 500, 900),
-        line('4', 620, 905), // coût sur la carte : même rangée, ignoré
-        line('Zyra', 900, 900),
-        line('Ahri', 1300, 900),
-        line('Roi Marlin', 1750, 300),
-        line('64', 1880, 305),
-        line('Autre Joueur', 1750, 380),
-        line('100', 1880, 385),
+        l('3-5', 880, 20),
+        l('Lvl. 8', 330, 940),
+        l('15/68', 440, 942),
+        l('15%', 540, 944), l('20%', 590, 944), l('32%', 650, 944), l('30%', 700, 944), l('3%', 760, 944),
+        l('31', 960, 940), // or
+        l('15', 1075, 940), // série
+        l('100', 1675, 290, 44), // ses propres PV : plus gros, sans pseudo
+        l('Tobakka', 1640, 375), l('72', 1725, 378),
+        l('Keto', 1670, 452), l('34', 1725, 455),
+        l('T1A', 1675, 528), l('25', 1725, 530),
+        l('3', 110, 370), // compteur de trait à gauche : ignoré
       ],
     };
-    const hud = readHud(frame, readShop(frame, set), 'Roi Marlin');
-    expect(hud).toEqual({ stage: '3-2', level: 6, gold: 47, hp: 64 });
-    // Sans pseudo connu ni boutique repérée, on ne devine ni PV ni or.
-    const bare = { ...frame, lines: frame.lines.filter((l) => !['Ezreal', 'Zyra', 'Ahri'].includes(l.text)) };
-    expect(readHud(bare, readShop(bare, set))).toEqual({ stage: '3-2', level: 6 });
-  });
-
-  it('apprend le pseudo au menu principal', () => {
-    expect(readPlayerName({ width: 1, height: 1, lines: [line('JOUER', 0, 0), line('Roi Marlin#EUW', 0, 0)] })).toBe('Roi Marlin');
-    expect(readPlayerName({ width: 1, height: 1, lines: [line('BRONZE III (4/5)', 0, 0)] })).toBeUndefined();
+    expect(readHud(frame)).toEqual({ stage: '3-5', level: 8, gold: 31, hp: 100, odds: [15, 20, 32, 30, 3] });
+    // Pourcentages lus d'un seul bloc : même résultat.
+    const merged = { ...frame, lines: [...frame.lines.filter((x) => !x.text.endsWith('%')), l('15% 20% 32% 30% 3%', 540, 944)] };
+    expect(readHud(merged)).toMatchObject({ gold: 31, odds: [15, 20, 32, 30, 3] });
+    // Sans ligne de niveau, on ne devine pas l'or ; sans ligne plus grosse, pas de PV.
+    const flat = frame.lines.filter((x) => x.text !== 'Lvl. 8').map((x) => ({ ...x, h: 30 }));
+    expect(readHud({ ...frame, lines: flat })).toEqual({ stage: '3-5' });
   });
 
   it('ne déclare pas de boutique sur un seul nom', () => {
@@ -300,6 +296,8 @@ describe('économie', () => {
     // Les 4 PO sont introuvables au niveau 4, et de plus en plus fréquents ensuite.
     expect(hitChance(4, four, DEMO_SET)).toBe(0);
     expect(hitChance(8, four, DEMO_SET)).toBeGreaterThan(hitChance(7, four, DEMO_SET));
+    // Les probabilités lues à l'écran priment sur la table.
+    expect(hitChance(4, four, DEMO_SET, [0, 0, 0, 100, 0])).toBeGreaterThan(0.5);
   });
 
   it('économise quand tout va bien, dépense quand les PV baissent', () => {
