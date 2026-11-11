@@ -4,6 +4,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
@@ -19,7 +20,11 @@ import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Environment;
 import android.os.IBinder;
+import android.provider.MediaStore;
+import android.net.Uri;
+import java.io.OutputStream;
 import android.util.DisplayMetrics;
 import android.view.WindowManager;
 import androidx.core.app.NotificationCompat;
@@ -40,6 +45,9 @@ public class CaptureService extends Service {
     static final String EXTRA_DATA = "data";
     static final String EXTRA_INTERVAL = "interval";
     private static final String CHANNEL = "screen-reader";
+
+    /** Demande d'enregistrer la prochaine image capturée dans la galerie (album CoopTFT). */
+    static volatile boolean snapshotRequested;
 
     private MediaProjection projection;
     private VirtualDisplay display;
@@ -139,6 +147,10 @@ public class CaptureService extends Service {
                 } else {
                     Bitmap bitmap = toBitmap(image);
                     image.close();
+                    if (snapshotRequested) {
+                        snapshotRequested = false;
+                        saveToGallery(bitmap);
+                    }
                     busy = true;
                     recognizer
                         .process(InputImage.fromBitmap(bitmap, 0))
@@ -165,6 +177,29 @@ public class CaptureService extends Service {
         Bitmap cropped = Bitmap.createBitmap(padded, 0, 0, image.getWidth(), image.getHeight());
         padded.recycle();
         return cropped;
+    }
+
+    /** Enregistre l'image telle que l'app la voit, pour pouvoir régler la lecture après coup. */
+    private void saveToGallery(Bitmap bitmap) {
+        boolean saved = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.Images.Media.DISPLAY_NAME, "coop-tft-" + System.currentTimeMillis() + ".jpg");
+                values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/CoopTFT");
+                Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                if (uri != null) {
+                    try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                        if (out != null) saved = bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out);
+                    }
+                }
+            } catch (Exception ignored) {
+                // Enregistrement impossible : signalé à l'interface ci-dessous.
+            }
+        }
+        ScreenReaderPlugin plugin = ScreenReaderPlugin.instance;
+        if (plugin != null) plugin.emitSnapshot(saved);
     }
 
     private void publish(Text text) {

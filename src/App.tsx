@@ -10,7 +10,7 @@ import { boardChampions, traitStates } from './engine/traits';
 import { canon, prettyId, type MetaComp } from './meta/aggregate';
 import { ago, loadMeta, type MetaResult } from './meta/load';
 import { detectGame, readHud, readShop, type Hud, type ScreenFrame } from './screen/match';
-import { screenReaderAvailable, startScreenReader } from './screen/reader';
+import { requestSnapshot, screenReaderAvailable, startScreenReader } from './screen/reader';
 import { useStored } from './storage';
 import { APK_URL, updateAvailable } from './update';
 
@@ -67,6 +67,8 @@ export default function App() {
   const [autoMoney, setAutoMoney] = useStored('coop-tft:automoney', false);
   const [samples, setSamples] = useStored<{ t: number; f: ScreenFrame; lu: Hud }[]>('coop-tft:samples', []);
   const lastSample = useRef(0);
+  const autoShots = useRef(0);
+  const [shots, setShots] = useState<{ saved: number; failed: number }>({ saved: 0, failed: 0 });
   const [autoRead, setAutoRead] = useState<Hud>({});
   const lastHud = useRef<Hud>({});
   const [tab, setTab] = useState<Tab>('meta');
@@ -181,6 +183,11 @@ export default function App() {
       lastSample.current = Date.now();
       const { at: _at, ...f } = frame;
       setSamples([...samples.slice(-4), { t: Date.now(), f, lu: hud }]);
+      // Et l'image correspondante dans la galerie, six au plus par session de lecture.
+      if (autoShots.current < 6) {
+        autoShots.current++;
+        requestSnapshot();
+      }
     }
     if (!autoFill) return;
     if (stable.level !== undefined && stable.level !== level) setLevel(stable.level);
@@ -266,7 +273,10 @@ export default function App() {
           setReading('off');
           setReadError(reason);
         },
+        (saved) => setShots((x) => (saved ? { ...x, saved: x.saved + 1 } : { ...x, failed: x.failed + 1 })),
       );
+      autoShots.current = 0;
+      setShots({ saved: 0, failed: 0 });
       setReading('on');
     } catch (e) {
       setReading('off');
@@ -826,6 +836,11 @@ export default function App() {
                         Lu à l'écran : manche <b>{autoRead.stage ?? '—'}</b> · niveau <b>{autoRead.level ?? '—'}</b> · or{' '}
                         <b>{autoRead.gold ?? '—'}</b> · PV <b>{autoRead.hp ?? '—'}</b> · boutique{' '}
                         <b>{autoRead.odds ? autoRead.odds.join('/') : '—'}</b>
+                      </p>
+                      <button onClick={() => requestSnapshot()}>Enregistrer une image maintenant</button>
+                      <p className="readout">
+                        Images enregistrées dans la galerie (album CoopTFT) : <b>{shots.saved}</b>
+                        {shots.failed > 0 && ` · ${shots.failed} échec(s)`}
                       </p>
                       <button onClick={copyDiagnostic} disabled={!frame}>
                         {copied ? 'Copié ✓' : 'Copier le diagnostic'}

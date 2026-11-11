@@ -58,6 +58,19 @@ public class ScreenReaderPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Enregistre la prochaine image capturée dans la galerie. */
+    @PluginMethod
+    public void snapshot(PluginCall call) {
+        CaptureService.snapshotRequested = true;
+        call.resolve();
+    }
+
+    void emitSnapshot(boolean saved) {
+        JSObject data = new JSObject();
+        data.put("saved", saved);
+        notifyListeners("snapshot", data);
+    }
+
     private void setSecure(boolean secure) {
         Activity activity = getActivity();
         if (activity == null) return;

@@ -4,8 +4,10 @@ import type { ScreenFrame } from './match';
 interface ScreenReaderPlugin {
   start(options: { intervalMs: number }): Promise<void>;
   stop(): Promise<void>;
+  snapshot(): Promise<void>;
   addListener(event: 'screenText', cb: (frame: ScreenFrame) => void): Promise<PluginListenerHandle>;
   addListener(event: 'stopped', cb: (info: { reason: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: 'snapshot', cb: (info: { saved: boolean }) => void): Promise<PluginListenerHandle>;
 }
 
 const plugin = registerPlugin<ScreenReaderPlugin>('ScreenReader');
@@ -16,10 +18,12 @@ export const screenReaderAvailable = () => Capacitor.getPlatform() === 'android'
 export async function startScreenReader(
   onFrame: (frame: ScreenFrame) => void,
   onStopped: (reason: string) => void,
+  onSnapshot: (saved: boolean) => void,
 ): Promise<() => Promise<void>> {
   const handles = [
     await plugin.addListener('screenText', onFrame),
     await plugin.addListener('stopped', (info) => onStopped(info.reason)),
+    await plugin.addListener('snapshot', (info) => onSnapshot(info.saved)),
   ];
   try {
     await plugin.start({ intervalMs: 1500 });
@@ -32,3 +36,6 @@ export async function startScreenReader(
     await plugin.stop();
   };
 }
+
+/** Demande à l'app d'enregistrer dans la galerie (album CoopTFT) la prochaine image qu'elle capture. */
+export const requestSnapshot = () => plugin.snapshot().catch(() => {});
