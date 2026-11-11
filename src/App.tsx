@@ -61,6 +61,7 @@ export default function App() {
   const [level, setLevel] = useStored('coop-tft:level', 6);
   const [comps, setComps] = useStored<SavedComp[]>('coop-tft:comps', []);
   const [plan, setPlan] = useStored<MetaComp | null>('coop-tft:plan', null);
+  const [planLevel, setPlanLevel] = useStored('coop-tft:planlevel', 8);
   const [game, setGame] = useStored('coop-tft:game', { stage: '2-1', gold: 10, hp: 100 });
   const [held, setHeld] = useStored<Record<string, number>>('coop-tft:held', {});
   const [autoFill, setAutoFill] = useStored('coop-tft:autofill', true);
@@ -335,17 +336,31 @@ export default function App() {
     setBoard(next);
     setSelected(null);
   };
-  const compUnits = (c: MetaComp) =>
-    c.units.map((id) => byCanon.get(canon(id))).filter((u): u is Champion => !!u);
-  const loadComp = (c: MetaComp) => {
+  const toUnits = (ids: string[]) => ids.map((id) => byCanon.get(canon(id))).filter((u): u is Champion => !!u);
+  const compUnits = (c: MetaComp) => toUnits(c.units);
+  /** Plateau type de la compo au niveau donné (7, 8 ou 9), ou le plateau général à défaut. */
+  const variantFor = (c: MetaComp, lvl: number) => {
+    const ids = c.variants?.[String(Math.min(9, Math.max(7, lvl)))];
+    return ids?.length ? toUnits(ids) : compUnits(c);
+  };
+  const showVariant = (c: MetaComp, lvl: number) => {
     const raw: Board = {};
-    compUnits(c).forEach((u, i) => (raw[i] = u.id));
+    variantFor(c, lvl).forEach((u, i) => (raw[i] = u.id));
     setBoard(autoArrange(raw, set));
+    setSelected(null);
+  };
+  const loadComp = (c: MetaComp) => {
+    showVariant(c, Math.max(level, 8));
     setPlan(c);
+    setPlanLevel(Math.min(9, Math.max(8, level)));
     setHeld({});
     setTab('live');
-    setLevel(Math.min(10, Math.max(level, Object.keys(raw).length)));
-    setSelected(null);
+  };
+  /** Unités à ajouter en passant au niveau suivant, d'après les parties. */
+  const nextAdds = (c: MetaComp, lvl: number) => {
+    if (lvl >= 9 || !c.variants?.[String(lvl + 1)]) return [];
+    const now = new Set(variantFor(c, lvl).map((u) => u.id));
+    return variantFor(c, lvl + 1).filter((u) => !now.has(u.id));
   };
   const saveComp = () => {
     const name = prompt('Nom de la compo ?')?.trim();
@@ -552,6 +567,36 @@ export default function App() {
                     </div>
                   )}
 
+                  {plan?.variants && (
+                    <div className="card">
+                      <h4>Plateau visé</h4>
+                      <div className="seg">
+                        {[7, 8, 9]
+                          .filter((n) => plan.variants?.[String(n)])
+                          .map((n) => (
+                            <button
+                              key={n}
+                              className={planLevel === n ? 'on' : ''}
+                              onClick={() => {
+                                setPlanLevel(n);
+                                showVariant(plan, n);
+                              }}
+                            >
+                              Niveau {n}
+                            </button>
+                          ))}
+                      </div>
+                      {nextAdds(plan, planLevel).length > 0 && (
+                        <small>
+                          Au niveau {planLevel + 1}, ajoute :{' '}
+                          {nextAdds(plan, planLevel)
+                            .map((u) => u.name)
+                            .join(', ')}
+                        </small>
+                      )}
+                    </div>
+                  )}
+
                   {carry && (
                     <div className="card">
                       <h4>Trouver {carry.name} en boutique</h4>
@@ -668,6 +713,14 @@ export default function App() {
                                 </span>
                               ))}
                             </span>
+                            {c.variants?.['9'] && nextAdds(c, 8).length > 0 && (
+                              <small>
+                                Niveau 9 : +{' '}
+                                {nextAdds(c, 8)
+                                  .map((u) => u.name)
+                                  .join(', ')}
+                              </small>
+                            )}
                             {c.carries.map((car) => {
                               const u = byCanon.get(canon(car.id));
                               return (

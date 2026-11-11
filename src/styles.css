@@ -853,3 +853,7 @@ nav button {
 .badges .corekey { background: none; color: var(--accent); padding-left: 0; }
 .compunits .core .icon { box-shadow: 0 0 0 2px var(--accent); }
 .compunits span { display: inline-flex; }
+
+.seg { display: flex; gap: 5px; }
+.seg button { flex: 1; min-height: 30px; padding: 3px 6px; }
+.seg button.on { border-color: var(--accent); background: #2f2a16; font-weight: 700; }

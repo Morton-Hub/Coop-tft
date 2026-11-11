@@ -196,6 +196,10 @@ describe('meta', () => {
     // Top 4 des mages : niveaux 9, 9, 8, 8 -> médiane 9 ; carry 2 étoiles -> pas une compo de reroll.
     expect(mage.level).toBe(9);
     expect(mage.reroll).toBe(false);
+    // Plateaux types par niveau : les joueurs niveau 9 jouent les 9 unités, ceux niveau 8 aussi vus 8 max.
+    expect(mage.variants?.['9']).toHaveLength(9);
+    expect(mage.variants?.['8']).toHaveLength(8);
+    expect(mage.variants?.['7']).toBeUndefined();
     expect(tank.level).toBeUndefined();
   });
 });

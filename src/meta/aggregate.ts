@@ -48,6 +48,8 @@ export interface MetaComp {
   reroll?: boolean;
   /** Unités nettement plus présentes chez les top 4 que chez les autres : à ne pas manquer. */
   core?: string[];
+  /** Plateau type selon le niveau du joueur (clés « 7 », « 8 », « 9 »), quand assez de parties le montrent. */
+  variants?: Record<string, string[]>;
   count: number;
   pickRate: number;
   avgPlacement: number;
@@ -204,6 +206,21 @@ export function aggregate(
       if (withMain.length >= 5) reroll = starred.length / withMain.length >= 0.4;
     }
 
+    // Plateau type à chaque niveau : les unités les plus jouées par ceux qui ont fini à ce niveau
+    // (les top 4 de préférence, tous les joueurs sinon).
+    const variants: Record<string, string[]> = {};
+    for (const lvl of [7, 8, 9]) {
+      let group = top.filter((p) => p.level === lvl);
+      if (group.length < 8) group = c.boards.filter((p) => p.level === lvl);
+      if (group.length < 8) continue;
+      const freq = new Map<string, number>();
+      for (const p of group) for (const id of new Set(p.units.map((u) => u.character_id))) bump(freq, id);
+      variants[lvl] = topKeys(freq)
+        .filter(([, k]) => k / group.length >= 0.25)
+        .slice(0, lvl)
+        .map(([id]) => id);
+    }
+
     let keyUnits: string[] | undefined;
     if (top.length >= 10 && bottom.length >= 10) {
       const share = (group: RawParticipant[], id: string) =>
@@ -225,6 +242,7 @@ export function aggregate(
       ...(level ? { level } : {}),
       ...(reroll !== undefined ? { reroll } : {}),
       ...(keyUnits?.length ? { core: keyUnits } : {}),
+      ...(Object.keys(variants).length ? { variants } : {}),
       count: n,
       pickRate: round(n / boards, 3),
       avgPlacement: round(avg),
