@@ -68,6 +68,7 @@ export default function App() {
   const [samples, setSamples] = useStored<{ t: number; f: ScreenFrame; lu: Hud }[]>('coop-tft:samples', []);
   const lastSample = useRef(0);
   const autoShots = useRef(0);
+  const lastShot = useRef(0);
   const [shots, setShots] = useState<{ saved: number; failed: number }>({ saved: 0, failed: 0 });
   const [autoRead, setAutoRead] = useState<Hud>({});
   const lastHud = useRef<Hud>({});
@@ -183,11 +184,14 @@ export default function App() {
       lastSample.current = Date.now();
       const { at: _at, ...f } = frame;
       setSamples([...samples.slice(-4), { t: Date.now(), f, lu: hud }]);
-      // Et l'image correspondante dans la galerie, six au plus par session de lecture.
-      if (autoShots.current < 6) {
-        autoShots.current++;
-        requestSnapshot();
-      }
+    }
+    // Images pour le réglage : une par minute dès qu'une partie est en cours (achat, combat, carrousel),
+    // quinze au plus par session de lecture, enregistrées dans la galerie.
+    const inGame = shopRead.shop.length > 0 || hud.stage !== undefined || hud.level !== undefined;
+    if (inGame && autoShots.current < 15 && Date.now() - lastShot.current > 60000) {
+      lastShot.current = Date.now();
+      autoShots.current++;
+      requestSnapshot();
     }
     if (!autoFill) return;
     if (stable.level !== undefined && stable.level !== level) setLevel(stable.level);
