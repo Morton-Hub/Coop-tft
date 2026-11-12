@@ -49,6 +49,9 @@ public class CaptureService extends Service {
     /** Demande d'enregistrer la prochaine image capturée dans la galerie (album CoopTFT). */
     static volatile boolean snapshotRequested;
 
+    /** Intervalle entre deux lectures, modifiable en cours de route (ralenti hors partie). */
+    static volatile int interval = 1500;
+
     private MediaProjection projection;
     private VirtualDisplay display;
     private ImageReader reader;
@@ -57,7 +60,8 @@ public class CaptureService extends Service {
     private TextRecognizer recognizer;
     private volatile boolean busy;
     private volatile boolean running;
-    private int interval = 1500;
+    private Bitmap buffer;
+    private int offsetY;
     private int width;
     private int height;
 
@@ -147,18 +151,20 @@ public class CaptureService extends Service {
                 } else {
                     Bitmap bitmap = toBitmap(image);
                     image.close();
-                    if (snapshotRequested) {
-                        snapshotRequested = false;
-                        saveToGallery(bitmap);
+                    if (bitmap != null) {
+                        if (snapshotRequested) {
+                            snapshotRequested = false;
+                            saveToGallery(bitmap);
+                        }
+                        busy = true;
+                        recognizer
+                            .process(InputImage.fromBitmap(bitmap, 0))
+                            .addOnSuccessListener(this::publish)
+                            .addOnCompleteListener(task -> {
+                                busy = false;
+                                bitmap.recycle();
+                            });
                     }
-                    busy = true;
-                    recognizer
-                        .process(InputImage.fromBitmap(bitmap, 0))
-                        .addOnSuccessListener(this::publish)
-                        .addOnCompleteListener(task -> {
-                            busy = false;
-                            bitmap.recycle();
-                        });
                 }
             }
         } catch (Exception ignored) {
@@ -167,16 +173,41 @@ public class CaptureService extends Service {
         handler.postDelayed(this::tick, interval);
     }
 
+    /**
+     * Copie l'image capturée dans un tampon réutilisé d'une lecture à l'autre, puis n'en garde que la
+     * partie utile : les bandes noires (notre propre fenêtre masquée, ou le cadre autour du jeu) sont
+     * retirées avant la reconnaissance, qui coûte en proportion de la surface analysée.
+     * Renvoie null si l'image est entièrement noire.
+     */
     private Bitmap toBitmap(Image image) {
         Image.Plane plane = image.getPlanes()[0];
-        ByteBuffer buffer = plane.getBuffer();
+        ByteBuffer pixels = plane.getBuffer();
         int rowWidth = plane.getRowStride() / plane.getPixelStride();
-        Bitmap padded = Bitmap.createBitmap(rowWidth, image.getHeight(), Bitmap.Config.ARGB_8888);
-        padded.copyPixelsFromBuffer(buffer);
-        if (rowWidth == image.getWidth()) return padded;
-        Bitmap cropped = Bitmap.createBitmap(padded, 0, 0, image.getWidth(), image.getHeight());
-        padded.recycle();
-        return cropped;
+        if (buffer == null || buffer.getWidth() != rowWidth || buffer.getHeight() != image.getHeight()) {
+            if (buffer != null) buffer.recycle();
+            buffer = Bitmap.createBitmap(rowWidth, image.getHeight(), Bitmap.Config.ARGB_8888);
+        }
+        buffer.copyPixelsFromBuffer(pixels);
+
+        int w = image.getWidth();
+        int h = image.getHeight();
+        int top = 0;
+        while (top < h && isBlackRow(buffer, top, w)) top += 8;
+        if (top >= h) return null;
+        int bottom = h - 1;
+        while (bottom > top && isBlackRow(buffer, bottom, w)) bottom -= 8;
+        top = Math.max(0, top - 8);
+        bottom = Math.min(h - 1, bottom + 8);
+        offsetY = top;
+        return Bitmap.createBitmap(buffer, 0, top, w, bottom - top + 1);
+    }
+
+    private static boolean isBlackRow(Bitmap bitmap, int y, int width) {
+        for (int x = width / 48; x < width; x += width / 24) {
+            int p = bitmap.getPixel(x, y);
+            if (((p >> 16) & 0xff) > 16 || ((p >> 8) & 0xff) > 16 || (p & 0xff) > 16) return false;
+        }
+        return true;
     }
 
     /** Enregistre l'image telle que l'app la voit, pour pouvoir régler la lecture après coup. */
@@ -213,7 +244,7 @@ public class CaptureService extends Service {
                 JSObject item = new JSObject();
                 item.put("text", line.getText());
                 item.put("x", box.left);
-                item.put("y", box.top);
+                item.put("y", box.top + offsetY);
                 item.put("w", box.width());
                 item.put("h", box.height());
                 lines.put(item);
@@ -236,6 +267,7 @@ public class CaptureService extends Service {
         running = false;
         if (display != null) display.release();
         if (reader != null) reader.close();
+        if (buffer != null) buffer.recycle();
         if (projection != null) projection.stop();
         if (recognizer != null) recognizer.close();
         if (thread != null) thread.quitSafely();

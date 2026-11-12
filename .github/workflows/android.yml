@@ -25,6 +25,12 @@ jobs:
       - run: npm run build
       # Le projet Android est généré à partir de capacitor.config.json, il n'est pas versionné.
       - run: npx cap add android
+      # Une seule architecture (téléphones Android 64 bits) : l'APK n'embarque pas le moteur de
+      # reconnaissance de texte en quatre exemplaires.
+      - name: Keep arm64 only
+        run: |
+          sed -i "s/versionName \"1.0\"/versionName \"1.0\"\n        ndk { abiFilters 'arm64-v8a' }/" android/app/build.gradle
+          grep -n "abiFilters" android/app/build.gradle
       # Clé de debug fixe : les mises à jour s'installent par-dessus la version précédente.
       - run: mkdir -p ~/.android && cp signing/debug.keystore ~/.android/debug.keystore
       - name: Build APK

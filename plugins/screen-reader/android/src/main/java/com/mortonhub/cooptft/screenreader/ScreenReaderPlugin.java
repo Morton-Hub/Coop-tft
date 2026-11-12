@@ -65,6 +65,13 @@ public class ScreenReaderPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Change la cadence de lecture sans relancer la capture. */
+    @PluginMethod
+    public void setInterval(PluginCall call) {
+        CaptureService.interval = Math.max(500, call.getInt("intervalMs", 1500));
+        call.resolve();
+    }
+
     void emitSnapshot(boolean saved) {
         JSObject data = new JSObject();
         data.put("saved", saved);

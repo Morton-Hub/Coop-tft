@@ -188,3 +188,27 @@ export function guessPlayerName(frame: ScreenFrame): string | undefined {
   }
   return undefined;
 }
+
+/** Ce que l'interface a besoin de connaître d'une image : tout le reste du texte lu est ignoré. */
+export interface FrameView {
+  shop: Champion[];
+  gameState: GameState;
+  /** Valeurs confirmées par deux lectures successives. */
+  hud: Hud;
+}
+export const EMPTY_VIEW: FrameView = { shop: [], gameState: 'none', hud: {} };
+
+/** Ne garde d'une lecture que les valeurs identiques à la lecture précédente. */
+export function stableHud(hud: Hud, prev: Hud): Hud {
+  const stable: Hud = {};
+  for (const k of ['stage', 'level', 'gold', 'hp'] as const)
+    if (hud[k] !== undefined && hud[k] === prev[k]) (stable as Record<string, unknown>)[k] = hud[k];
+  if (hud.odds && hud.odds.join() === prev.odds?.join()) stable.odds = hud.odds;
+  if (hud.xp && hud.xp.have === prev.xp?.have && hud.xp.total === prev.xp?.total) stable.xp = hud.xp;
+  return stable;
+}
+
+/** Empreinte d'une vue : deux images qui donnent la même n'ont pas besoin de redessiner l'écran. */
+export function viewKey(v: FrameView): string {
+  return `${v.gameState}|${v.shop.map((c) => c.id).join(',')}|${JSON.stringify(v.hud)}`;
+}

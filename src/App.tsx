@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { copyText } from './clipboard';
+import { Bar, Icon } from './components';
 import { loadSet } from './data/cdragon';
 import { DEMO_SET } from './data/demo';
 import { COLS, ROWS, type Board, type Champion, type GameSet } from './data/types';
@@ -9,8 +11,9 @@ import { suggest } from './engine/suggest';
 import { boardChampions, traitStates } from './engine/traits';
 import { canon, prettyId, type MetaComp } from './meta/aggregate';
 import { ago, loadMeta, type MetaResult } from './meta/load';
-import { detectGame, guessPlayerName, readHud, readShop, type Hud, type ScreenFrame } from './screen/match';
-import { requestSnapshot, screenReaderAvailable, startScreenReader } from './screen/reader';
+import type { Hud } from './screen/match';
+import { requestSnapshot, screenReaderAvailable } from './screen/reader';
+import { useScreenReader } from './screen/useScreenReader';
 import { useStored } from './storage';
 import { APK_URL, updateAvailable } from './update';
 
@@ -28,31 +31,6 @@ const ACTION_LOOK: Record<Action, { icon: string; label: string }> = {
   allin: { icon: '🔥', label: 'Roll tout' },
 };
 
-function Bar({ label, value, tone }: { label: string; value: number; tone?: string }) {
-  return (
-    <div className="bar">
-      <span>{label}</span>
-      <div className="track">
-        <div className={`fill ${tone ?? ''}`} style={{ width: `${Math.round(value * 100)}%` }} />
-      </div>
-      <b>{Math.round(value * 100)} %</b>
-    </div>
-  );
-}
-
-function Icon({ c }: { c: Champion }) {
-  const [broken, setBroken] = useState(false);
-  return (
-    <span className={`icon cost-${c.cost}`}>
-      {c.icon && !broken ? (
-        <img src={c.icon} alt="" loading="lazy" onError={() => setBroken(true)} />
-      ) : (
-        <span className="initials">{c.name.slice(0, 3)}</span>
-      )}
-    </span>
-  );
-}
-
 export default function App() {
   const [set, setSet] = useState<GameSet>(DEMO_SET);
   const [meta, setMeta] = useState<MetaResult | 'loading' | 'error'>('loading');
@@ -65,25 +43,13 @@ export default function App() {
   const [game, setGame] = useStored('coop-tft:game', { stage: '2-1', gold: 10, hp: 100 });
   const [held, setHeld] = useStored<Record<string, number>>('coop-tft:held', {});
   const [autoFill, setAutoFill] = useStored('coop-tft:autofill', true);
-  const [player, setPlayer] = useStored('coop-tft:pseudo', '');
-  const nameVotes = useRef<Record<string, number>>({});
-  const [samples, setSamples] = useStored<{ t: number; f: ScreenFrame; lu: Hud }[]>('coop-tft:samples', []);
-  const lastSample = useRef(0);
-  const autoShots = useRef(0);
-  const lastShot = useRef(0);
-  const [shots, setShots] = useState<{ saved: number; failed: number }>({ saved: 0, failed: 0 });
-  const [autoRead, setAutoRead] = useState<Hud>({});
-  const lastHud = useRef<Hud>({});
   const [tab, setTab] = useState<Tab>('meta');
   const [selected, setSelected] = useState<number | null>(null);
   const [traitFilter, setTraitFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [costFilter, setCostFilter] = useState<number | null>(null);
-  const [frame, setFrame] = useState<(ScreenFrame & { at: number }) | null>(null);
-  const [reading, setReading] = useState<'off' | 'starting' | 'on'>('off');
-  const [readError, setReadError] = useState('');
   const [update, setUpdate] = useState(false);
-  const stopReader = useRef<(() => Promise<void>) | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const load = (force: boolean) => {
     setStatus('loading');
@@ -109,6 +75,11 @@ export default function App() {
     // La mise à jour ne concerne que l'app Android installée.
     if (screenReaderAvailable()) updateAvailable().then(setUpdate);
   }, []);
+
+  const screen = useScreenReader(set.champions);
+  const { reading, hud: autoRead, shop, gameState, shots, samples, player, setPlayer, frame } = screen;
+  // Le texte brut change à chaque image : on ne le suit que lorsque son onglet est ouvert.
+  screen.watchRaw(tab === 'screen');
 
   const byId = useMemo(() => new Map(set.champions.map((c) => [c.id, c])), [set]);
   // L'API Riot et Community Dragon n'écrivent pas les ids de la même façon : on compare leur forme canonique.
@@ -158,8 +129,6 @@ export default function App() {
   const warnings = tips.filter((t) => t.level === 'warn');
   const hpTone = game.hp <= 30 ? 'red' : game.hp <= 55 ? 'orange' : 'green';
 
-  const shopRead = useMemo(() => (frame ? readShop(frame, set.champions) : null), [frame, set]);
-  const gameState = useMemo(() => (frame ? detectGame(frame, set.champions) : 'none'), [frame, set]);
   // Pastille : grise = lecture arrêtée, orange = lecture active sans jeu visible, verte = TFT détecté.
   const dot =
     reading !== 'on'
@@ -172,133 +141,34 @@ export default function App() {
   // Unités de la boutique qui font partie du plan (le plateau chargé) ou qui en complètent une synergie.
   const planIds = useMemo(() => new Set(Object.values(board)), [board]);
   const ideaIds = useMemo(() => new Set(ideas.map((s) => s.champion.id)), [ideas]);
-  const toBuy = shopRead?.shop.filter((c) => planIds.has(c.id)) ?? [];
+  const toBuy = useMemo(() => shop.filter((c) => planIds.has(c.id)), [shop, planIds]);
 
-  // Remplissage automatique : une valeur n'est retenue que si deux lectures successives concordent.
+  // Remplissage automatique depuis les valeurs lues à l'écran (déjà confirmées par deux lectures).
   useEffect(() => {
-    if (!frame || !shopRead) return;
-    // Pseudo : retenu quand le même nom est repéré trois fois à la fois dans la liste et sur le plateau.
-    const guess = guessPlayerName(frame);
-    if (guess && !player) {
-      nameVotes.current[guess] = (nameVotes.current[guess] ?? 0) + 1;
-      if (nameVotes.current[guess] >= 3) setPlayer(guess);
-    }
-    const hud = readHud(frame, player);
-    const prev = lastHud.current;
-    lastHud.current = hud;
-    const stable: Hud = {};
-    for (const k of ['stage', 'level', 'gold', 'hp'] as const)
-      if (hud[k] !== undefined && hud[k] === prev[k]) (stable as Record<string, unknown>)[k] = hud[k];
-    if (hud.odds && hud.odds.join() === prev.odds?.join()) stable.odds = hud.odds;
-    if (hud.xp && hud.xp.have === prev.xp?.have && hud.xp.total === prev.xp?.total) stable.xp = hud.xp;
-    setAutoRead(stable);
-    // Relevés automatiques : un par minute en partie (boutique ouverte ou non), les 6 derniers sont gardés
-    // pour pouvoir régler la lecture après la partie sans rien faire pendant.
-    const playing = shopRead.shop.length > 0 || hud.stage !== undefined || hud.level !== undefined;
-    if (playing && Date.now() - lastSample.current > 60000) {
-      lastSample.current = Date.now();
-      const { at: _at, ...f } = frame;
-      setSamples([...samples.slice(-5), { t: Date.now(), f, lu: hud }]);
-    }
-    // Images pour le réglage : une par minute dès qu'une partie est en cours (achat, combat, carrousel),
-    // quinze au plus par session de lecture, enregistrées dans la galerie.
-    if (playing && autoShots.current < 15 && Date.now() - lastShot.current > 60000) {
-      lastShot.current = Date.now();
-      autoShots.current++;
-      requestSnapshot();
-    }
-    if (!autoFill) return;
-    if (stable.level !== undefined && stable.level !== level) setLevel(stable.level);
+    if (reading !== 'on' || !autoFill) return;
+    if (autoRead.level !== undefined && autoRead.level !== level) setLevel(autoRead.level);
     const next = {
-      stage: stable.stage ?? game.stage,
-      gold: stable.gold ?? game.gold,
-      hp: stable.hp !== undefined && stable.hp >= 1 ? stable.hp : game.hp,
+      stage: autoRead.stage ?? game.stage,
+      gold: autoRead.gold ?? game.gold,
+      hp: autoRead.hp !== undefined && autoRead.hp >= 1 ? autoRead.hp : game.hp,
     };
     if (next.stage !== game.stage || next.gold !== game.gold || next.hp !== game.hp) setGame(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frame]);
+  }, [autoRead, reading, autoFill]);
   const auto = (k: keyof Hud) => reading === 'on' && autoFill && autoRead[k] !== undefined;
 
-  const [copied, setCopied] = useState(false);
-  const copyDiagnostic = async () => {
-    if (!frame) return;
-    const text = JSON.stringify({
-      w: frame.width,
-      h: frame.height,
-      etat: gameState,
-      boutique: shopRead?.shop.map((c) => c.name),
-      lu: autoRead,
-      lignes: frame.lines.map((l) => [l.text, l.x, l.y, l.w, l.h]),
-    });
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // Repli pour les WebView sans accès direct au presse-papiers.
-      const area = document.createElement('textarea');
-      area.value = text;
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand('copy');
-      area.remove();
-    }
+  const lines = (f: { lines: { text: string; x: number; y: number; w: number; h: number }[] }) =>
+    f.lines.map((l) => [l.text, l.x, l.y, l.w, l.h]);
+  const copy = async (payload: unknown) => {
+    await copyText(JSON.stringify(payload));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  const copySamples = async () => {
-    const text = JSON.stringify({
-      releves: samples.map((x) => ({
-        w: x.f.width,
-        h: x.f.height,
-        lu: x.lu,
-        lignes: x.f.lines.map((l) => [l.text, l.x, l.y, l.w, l.h]),
-      })),
-    });
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const area = document.createElement('textarea');
-      area.value = text;
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand('copy');
-      area.remove();
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const toggleReading = async () => {
-    setReadError('');
-    if (reading !== 'off') {
-      await stopReader.current?.().catch(() => {});
-      stopReader.current = null;
-      setReading('off');
-      setFrame(null);
-      return;
-    }
-    setReading('starting');
-    try {
-      stopReader.current = await startScreenReader(
-        (f) => {
-          setFrame({ ...f, at: Date.now() });
-          setReading('on');
-        },
-        (reason) => {
-          stopReader.current = null;
-          setReading('off');
-          setReadError(reason);
-        },
-        (saved) => setShots((x) => (saved ? { ...x, saved: x.saved + 1 } : { ...x, failed: x.failed + 1 })),
-      );
-      autoShots.current = 0;
-      setShots({ saved: 0, failed: 0 });
-      setReading('on');
-    } catch (e) {
-      setReading('off');
-      setReadError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  const copyDiagnostic = () =>
+    frame &&
+    copy({ w: frame.width, h: frame.height, etat: gameState, boutique: shop.map((c) => c.name), lu: autoRead, lignes: lines(frame) });
+  const copySamples = () =>
+    copy({ releves: samples.map((x) => ({ w: x.f.width, h: x.f.height, lu: x.lu, lignes: lines(x.f) })) });
 
   const topTip = tips.find((t) => t.level === 'warn') ?? tips[0];
   const full = units.length >= level;
@@ -532,11 +402,11 @@ export default function App() {
                     </div>
                   </div>
 
-                  {reading === 'on' && shopRead && shopRead.shop.length > 0 && (
+                  {reading === 'on' && shop.length > 0 && (
                     <div className={`card ${toBuy.length ? 'gold' : ''}`}>
                       <h4>{toBuy.length ? 'À acheter dans la boutique' : 'Boutique : rien pour ta compo'}</h4>
                       <div className="shoprow">
-                        {shopRead.shop.map((c, k) => (
+                        {shop.map((c, k) => (
                           <span key={k} className={planIds.has(c.id) ? 'want' : 'skip'}>
                             <Icon c={c} />
                           </span>
@@ -871,7 +741,7 @@ export default function App() {
                 <p className="muted">La lecture de l'écran n'existe que dans l'application Android.</p>
               ) : (
                 <>
-                  <button onClick={toggleReading} disabled={reading === 'starting'}>
+                  <button onClick={screen.toggle} disabled={reading === 'starting'}>
                     {reading === 'off' ? "Démarrer la lecture de l'écran" : 'Arrêter la lecture'}
                   </button>
                   {samples.length > 0 && (
@@ -889,7 +759,7 @@ export default function App() {
                       <span className={`dot ${dot.cls}`} /> {dot.label}
                     </p>
                   )}
-                  {readError && <p className="tips"><span className="warn">{readError}</span></p>}
+                  {screen.error && <p className="tips"><span className="warn">{screen.error}</span></p>}
                   {reading !== 'off' && (
                     <>
                       <label className="check">
@@ -915,9 +785,9 @@ export default function App() {
                         {copied ? 'Copié ✓' : 'Copier le diagnostic'}
                       </button>
                       <h3>Boutique lue</h3>
-                      {shopRead?.shop.length ? (
+                      {shop.length ? (
                         <div className="ideas">
-                          {shopRead.shop.map((c, k) => (
+                          {shop.map((c, k) => (
                             <div
                               key={k}
                               className={`idea shopcard ${planIds.has(c.id) ? 'plan' : ideaIds.has(c.id) ? 'fit' : ''}`}

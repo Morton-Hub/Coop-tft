@@ -2,7 +2,7 @@ import { canon } from '../meta/aggregate';
 import type { Champion, GameSet, Item, Role, Trait } from './types';
 
 const BASE = 'https://raw.communitydragon.org/latest';
-const CACHE_KEY = 'coop-tft:data:v4';
+const CACHE_KEY = 'coop-tft:data:v5';
 const CACHE_TTL = 12 * 3600 * 1000;
 
 /* Forme (partielle) du fichier cdragon/tft/<locale>.json */
@@ -99,21 +99,24 @@ function normalizeSet(raw: RawSet, items: Record<string, Item>): GameSet {
 
 /** Le set jouable le plus récent (le set standard passe avant ses variantes de mode). */
 export function normalize(data: RawData): GameSet | undefined {
-  const items: Record<string, Item> = {};
-  for (const it of data.items ?? []) {
-    if (it.apiName && it.name && /item/i.test(it.apiName))
-      items[canon(it.apiName)] ??= {
-        name: it.name,
-        icon: assetUrl(it.icon),
-        ...(it.composition?.length === 2 ? { from: it.composition.map(canon) } : {}),
-      };
-  }
   const raws = (data.setData ?? []).slice().sort((a, b) => {
     if (a.number !== b.number) return b.number - a.number;
     const std = (s: RawSet) => (s.mutator === `TFTSet${s.number}` ? 0 : 1);
     return std(a) - std(b) || (b.champions?.length ?? 0) - (a.champions?.length ?? 0);
   });
   for (const raw of raws) {
+    // Seuls les objets utiles au set sont gardés (standards, du set, emblèmes) : le fichier complet
+    // en contient des milliers, tous sets confondus, qu'il faudrait stocker et relire à chaque lancement.
+    const ofSet = new RegExp(`^TFT(${raw.number})?_Item_`, 'i');
+    const items: Record<string, Item> = {};
+    for (const it of data.items ?? []) {
+      if (it.apiName && it.name && (ofSet.test(it.apiName) || /item.*(emblem|radiant)|emblem.*item/i.test(it.apiName)))
+        items[canon(it.apiName)] ??= {
+          name: it.name,
+          icon: assetUrl(it.icon),
+          ...(it.composition?.length === 2 ? { from: it.composition.map(canon) } : {}),
+        };
+    }
     const set = normalizeSet(raw, items);
     if (set.champions.length >= 20 && set.traits.length > 0) return set;
   }

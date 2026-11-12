@@ -5,6 +5,7 @@ interface ScreenReaderPlugin {
   start(options: { intervalMs: number }): Promise<void>;
   stop(): Promise<void>;
   snapshot(): Promise<void>;
+  setInterval(options: { intervalMs: number }): Promise<void>;
   addListener(event: 'screenText', cb: (frame: ScreenFrame) => void): Promise<PluginListenerHandle>;
   addListener(event: 'stopped', cb: (info: { reason: string }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'snapshot', cb: (info: { saved: boolean }) => void): Promise<PluginListenerHandle>;
@@ -39,3 +40,6 @@ export async function startScreenReader(
 
 /** Demande à l'app d'enregistrer dans la galerie (album CoopTFT) la prochaine image qu'elle capture. */
 export const requestSnapshot = () => plugin.snapshot().catch(() => {});
+
+/** Change la cadence de capture sans relancer la lecture. */
+export const setReaderInterval = (intervalMs: number) => plugin.setInterval({ intervalMs }).catch(() => {});

@@ -6,7 +6,17 @@ import { analyze, autoArrange, bestHex, colOf, hex, mirror, rowOf } from '../src
 import { advise, expectedLevel, hitChance, interest, keyLevel } from '../src/engine/economy';
 import { buildable, componentPriority, resolveItems } from '../src/engine/items';
 import { suggest } from '../src/engine/suggest';
-import { cardName, detectGame, guessPlayerName, normText, readHud, readShop } from '../src/screen/match';
+import {
+  cardName,
+  detectGame,
+  EMPTY_VIEW,
+  guessPlayerName,
+  normText,
+  readHud,
+  readShop,
+  stableHud,
+  viewKey,
+} from '../src/screen/match';
 import releves from './fixtures/releves.json';
 import { isNewer } from '../src/update';
 import { boardChampions, countTraits, traitStates } from '../src/engine/traits';
@@ -284,6 +294,21 @@ describe('lecture de l’écran', () => {
       { stage: '6-5', xp: { have: 8, total: 68 }, gold: 10, odds: [15, 20, 32, 30, 3] }, // niveau non lu cette fois
     ]);
     expect(real.every((f) => detectGame(f, []) === 'game')).toBe(true);
+  });
+
+  it('ne redessine que si ce qui est tiré de l’image change', () => {
+    const [a, b] = real;
+    const view = (f: typeof a, prev: typeof a) => ({
+      shop: readShop(f, roster).shop,
+      gameState: detectGame(f, roster),
+      hud: stableHud(readHud(f), readHud(prev)),
+    });
+    // Deux lectures de la même image : même empreinte. Une autre manche : empreinte différente.
+    expect(viewKey(view(a, a))).toBe(viewKey(view({ ...a, lines: [...a.lines] }, a)));
+    expect(viewKey(view(b, b))).not.toBe(viewKey(view(a, a)));
+    expect(viewKey(EMPTY_VIEW)).toBe('none||{}');
+    // Une valeur lue une seule fois n'est pas retenue.
+    expect(stableHud({ gold: 39, level: 7 }, { gold: 46, level: 7 })).toEqual({ level: 7 });
   });
 
   it('lit ses PV dans la liste des joueurs et devine son pseudo', () => {
