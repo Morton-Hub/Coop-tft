@@ -5,6 +5,8 @@ import { loadSet } from './data/cdragon';
 import { DEMO_SET } from './data/demo';
 import { COLS, ROWS, type Board, type Champion, type GameSet } from './data/types';
 import { advise, hitChance, income, interest, type Action, type Situation } from './engine/economy';
+import { addRecord, summarize, type GameRecord } from './engine/history';
+import { rankComps, stars } from './engine/inventory';
 import { buildable, componentPriority, resolveItems } from './engine/items';
 import { analyze, autoArrange, bestHex, hex, mirror, SCOUTING_CHECKLIST } from './engine/positioning';
 import { suggest } from './engine/suggest';
@@ -77,7 +79,8 @@ export default function App() {
   }, []);
 
   const screen = useScreenReader(set.champions);
-  const { reading, hud: autoRead, shop, gameState, shots, samples, player, setPlayer, frame } = screen;
+  const { reading, hud: autoRead, shop, gameState, shots, samples, player, setPlayer, frame, owned, ended } = screen;
+  const [history, setHistory] = useStored<GameRecord[]>('coop-tft:history', []);
   // Le texte brut change à chaque image : on ne le suit que lorsque son onglet est ouvert.
   screen.watchRaw(tab === 'screen');
 
@@ -124,6 +127,31 @@ export default function App() {
   const allNeeds = itemNeeds.flatMap((n) => n.needs);
   const parts = componentPriority(allNeeds);
   const ready = buildable(allNeeds, held);
+
+  // Fin de partie reconnue à l'écran : on l'ajoute à l'historique avec la compo qui était visée.
+  useEffect(() => {
+    if (!ended) return;
+    const comp = plan ? { traits: plan.traits, carry: plan.carries[0]?.id } : undefined;
+    setHistory((h) => addRecord(h, { at: ended.at, placement: ended.placement, comp }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ended]);
+  const summary = useMemo(() => summarize(history), [history]);
+
+  // Inventaire déduit des achats : unités possédées, ce qui manque au plateau visé, compos qui collent.
+  const ownedUnits = useMemo(
+    () =>
+      Object.entries(owned)
+        .map(([id, copies]) => ({ unit: byId.get(id), copies }))
+        .filter((o): o is { unit: Champion; copies: number } => !!o.unit && o.copies > 0)
+        .sort((a, b) => b.copies - a.copies || b.unit.cost - a.unit.cost),
+    [owned, byId],
+  );
+  const hasOwned = ownedUnits.length > 0;
+  const missing = useMemo(() => (hasOwned ? units.filter((u) => !owned[u.id]) : []), [hasOwned, units, owned]);
+  const fits = useMemo(
+    () => (typeof meta === 'object' ? rankComps(owned, meta.meta.comps, set) : []),
+    [owned, meta, set],
+  );
 
   const mode: Action | 'idle' = econ?.action ?? 'idle';
   const badHexes = new Set(tips.filter((t) => t.level === 'warn' && t.hex !== undefined).map((t) => t.hex));
@@ -295,7 +323,7 @@ export default function App() {
                       key={i}
                       className={`hex ${selected === i ? 'sel' : ''} ${c ? `cost-${c.cost}` : ''} ${badHexes.has(i) ? 'bad' : ''} ${
                         c && toBuy.some((b) => b.id === c.id) ? 'buy' : ''
-                      }`}
+                      } ${c && hasOwned && !owned[c.id] ? 'lack' : ''}`}
                       style={{ gridColumn: `${col * 2 + 1 + (r % 2)} / span 2` }}
                       onClick={() => tapHex(i)}
                       aria-label={c ? c.name : `Case vide ${r + 1}-${col + 1}`}
@@ -331,7 +359,8 @@ export default function App() {
           </div>
           {reading === 'on' && toBuy.length > 0 ? (
             <button className="tipbar buy" onClick={() => setTab('live')}>
-              🛒 Achète {[...new Set(toBuy.map((c) => c.name))].join(', ')}
+              🛒 Achète{' '}
+              {[...new Set(toBuy.map((c) => c.name + ((owned[c.id] ?? 0) % 3 === 2 ? ' (monte en étoile !)' : '')))].join(', ')}
             </button>
           ) : warnings.length > 0 ? (
             <button className="tipbar warn" onClick={() => setTab('live')}>
@@ -435,6 +464,28 @@ export default function App() {
                         <small key={k}>{t.text}</small>
                       ))}
                       <button onClick={() => setBoard(autoArrange(board, set))}>Corriger automatiquement</button>
+                    </div>
+                  )}
+
+                  {hasOwned && (
+                    <div className="card">
+                      <h4>Tes achats repérés</h4>
+                      <div className="owned">
+                        {ownedUnits.map(({ unit, copies }) => (
+                          <button
+                            key={unit.id}
+                            onClick={() => screen.adjustOwned(unit.id, -1)}
+                            title="Tape pour retirer un exemplaire (vente)"
+                          >
+                            <Icon c={unit} />
+                            <small>
+                              {'★'.repeat(stars(copies))} ×{copies}
+                            </small>
+                          </button>
+                        ))}
+                      </div>
+                      {missing.length > 0 && <small>Il te manque : {missing.map((u) => u.name).join(', ')}</small>}
+                      <small className="muted">Déduit de la boutique : approximatif. Tape une unité vendue pour la retirer.</small>
                     </div>
                   )}
 
@@ -563,7 +614,8 @@ export default function App() {
                     <p className="muted">Ces statistiques portent sur le set {meta.meta.set}, pas sur le set chargé.</p>
                   )}
                   <ul className="metalist">
-                    {meta.meta.comps.map((c, k) => (
+                    {(hasOwned ? fits : meta.meta.comps.map((comp, index) => ({ comp, index, score: 0, owned: [] }))).map(
+                      ({ comp: c, index: k, score, owned: got }) => (
                       <li key={k}>
                         <button className="comp" onClick={() => loadComp(c)}>
                           <span className={`tier tier-${c.tier}`}>{c.tier}</span>
@@ -596,6 +648,9 @@ export default function App() {
                                   .map((u) => u.name)
                                   .join(', ')}
                               </small>
+                            )}
+                            {score > 0 && (
+                              <small className="fit">Tu as déjà : {got.map((o) => o.champion.name).join(', ')}</small>
                             )}
                             {c.carries.map((car) => {
                               const u = byCanon.get(canon(car.id));
@@ -834,6 +889,30 @@ export default function App() {
 
           {tab === 'comps' && (
             <div className="panel">
+              <h3>Bilan de tes parties</h3>
+              {summary.games ? (
+                <>
+                  <p className="readout">
+                    <b>{summary.games}</b> parties · place moyenne <b>{summary.avgPlacement.toFixed(2)}</b> · top 4{' '}
+                    <b>{Math.round(summary.top4Rate * 100)} %</b> · victoires <b>{Math.round(summary.winRate * 100)} %</b>
+                    {summary.trend &&
+                      ` · tendance ${summary.trend.delta > 0 ? '↗ en progrès' : summary.trend.delta < 0 ? '↘ en baisse' : '→ stable'}`}
+                  </p>
+                  <ul className="tips">
+                    {summary.comps.slice(0, 6).map((c) => (
+                      <li key={c.key} className={c.avgPlacement <= 4 ? 'ok' : c.avgPlacement > 5 ? 'warn' : ''}>
+                        {c.traits.map((t) => traitName.get(canon(t)) ?? prettyId(t)).join(' + ')} : {c.games} partie
+                        {c.games > 1 ? 's' : ''}, place moyenne {c.avgPlacement.toFixed(1)}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="muted">
+                  Tes classements s'enregistrent tout seuls quand la lecture d'écran est active à la fin d'une partie.
+                </p>
+              )}
+              <h3>Tes compos</h3>
               <button onClick={saveComp} disabled={!units.length}>
                 Enregistrer le plateau actuel
               </button>

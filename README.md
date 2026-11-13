@@ -21,6 +21,9 @@ lance TFT et glisse Coop TFT en écran partagé. Toutes les versions :
 | Économie | Conseil « économise / monte de niveau / roll » selon la manche, l'or, les PV et le coût du carry visé, avec la chance de le trouver en boutique au niveau actuel et au suivant. |
 | Objets | Objets conseillés pour les carrys de la compo chargée, leurs recettes, les composants à prioriser et ce qui est faisable avec ceux en main. |
 | Lecture d'écran (expérimental) | Dans l'app Android : capture de l'écran et lecture du texte sur l'appareil pour repérer la boutique et signaler les unités de la compo. Non conforme aux règles de Riot sur les outils en partie : à activer en connaissance de cause. |
+| Inventaire déduit | En suivant les cartes qui disparaissent de la boutique (et la baisse d'or correspondante), l'app reconstitue les unités achetées : ce qui manque au plateau visé, les achats qui font monter en étoile, et les compos méta qui collent à ce qu'on possède. Approximatif par nature : ventes, carrousel et orbes ne sont pas vus. |
+| Bilan des parties | L'écran de résultats est reconnu et le classement enregistré : place moyenne, top 4, victoires, détail par compo et tendance. |
+| Séries | La série en cours est lue à l'écran et son or compté dans le revenu par tour. |
 | Données du set | Champions, traits, paliers et objets du set en cours uniquement, chargés depuis Community Dragon (français, repli anglais), mis en cache 12 h. |
 | Plateau 4 × 7 | Tap sur une unité : elle se pose sur la meilleure case libre pour son rôle. Tap unité puis case : déplacement ou échange. |
 | Synergies | Compteur par trait avec paliers ; tap sur un trait pour filtrer les unités correspondantes. |
@@ -97,7 +100,10 @@ src/engine/suggest.ts      classement des unités à ajouter
 src/engine/positioning.ts  cases préférées par rôle, placement auto, analyse
 src/engine/economy.ts      conseil d'économie (tables de boutique, niveaux clés)
 src/engine/items.ts        recettes, composants prioritaires, objets faisables
-src/screen/                lecture d'écran : repérage de la boutique dans le texte lu
+src/engine/inventory.ts    unités possédées déduites des achats, compos adaptées
+src/engine/history.ts      historique des parties et statistiques
+src/screen/                lecture d'écran : boutique, or, niveau, PV, fin de partie
+src/screen/icons.ts        prototype de reconnaissance des icônes d'objets (pas encore branché)
 plugins/screen-reader/     plugin Android : capture (MediaProjection) + texte (ML Kit)
 src/App.tsx                interface (plateau, synergies, onglets)
 ```

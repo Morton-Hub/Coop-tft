@@ -857,3 +857,17 @@ nav button {
 .seg { display: flex; gap: 5px; }
 .seg button { flex: 1; min-height: 30px; padding: 3px 6px; }
 .seg button.on { border-color: var(--accent); background: #2f2a16; font-weight: 700; }
+
+/* Inventaire déduit des achats */
+.owned { display: flex; flex-wrap: wrap; gap: 5px; }
+.owned button {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  min-height: 0;
+  padding: 3px 4px;
+}
+.owned .icon { width: 30px; height: 30px; }
+.owned small { color: var(--accent); font-size: 10px; }
+.hex.lack .icon { opacity: 0.45; }
+.fit { color: #3ddc84; }

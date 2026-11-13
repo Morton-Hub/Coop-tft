@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Champion } from '../data/types';
+import { adjust, createInventory, observe } from '../engine/inventory';
+import { readEndScreen } from './endgame';
 import { useStored } from '../storage';
 import {
   detectGame,
@@ -35,6 +37,11 @@ export function useScreenReader(champions: Champion[]) {
   const [view, setView] = useState<FrameView>(EMPTY_VIEW);
   const [shots, setShots] = useState({ saved: 0, failed: 0 });
   const [, setRawTick] = useState(0);
+  /** Exemplaires achetés, déduits des cartes qui disparaissent de la boutique. */
+  const [owned, setOwned] = useState<Record<string, number>>({});
+  /** Dernier écran de fin de partie reconnu. */
+  const [ended, setEnded] = useState<{ placement: number; at: number } | null>(null);
+  const inventory = useRef(createInventory());
   const [player, setPlayer] = useStored('coop-tft:pseudo', '');
   const [samples, setSamples] = useStored<Sample[]>('coop-tft:samples', []);
 
@@ -51,6 +58,8 @@ export function useScreenReader(champions: Champion[]) {
     idleFrames: 0,
     interval: FAST_MS,
     watchRaw: false,
+    endPlacement: 0,
+    endAt: 0,
   });
   const stop = useRef<(() => Promise<void>) | null>(null);
 
@@ -69,6 +78,22 @@ export function useScreenReader(champions: Champion[]) {
       setView(next);
     }
     if (st.watchRaw) setRawTick((n) => n + 1);
+
+    // Inventaire : chaque lecture de boutique est confrontée à la précédente (valeurs brutes, le module
+    // d'inventaire fait sa propre confirmation).
+    const inv = observe(inventory.current, { shop: shopRead.shop, gold: hud.gold, stage: hud.stage, level: hud.level, at: Date.now() });
+    if (inv.owned !== inventory.current.owned) setOwned(inv.owned);
+    inventory.current = inv;
+
+    // Fin de partie : le classement est noté une fois par écran de résultats.
+    if (name) {
+      const end = readEndScreen(f, name);
+      if (end && (st.endPlacement !== end.placement || Date.now() - st.endAt > 600000)) {
+        st.endPlacement = end.placement;
+        st.endAt = Date.now();
+        setEnded({ placement: end.placement, at: st.endAt });
+      }
+    }
 
     // Pseudo : retenu quand le même nom est vu trois fois à la fois dans la liste des joueurs et sur le plateau.
     if (!name) {
@@ -137,6 +162,13 @@ export function useScreenReader(champions: Champion[]) {
     ...view,
     shots,
     samples,
+    owned,
+    ended,
+    /** Correction manuelle de l'inventaire (une vente, par exemple). */
+    adjustOwned: (id: string, delta: number) => {
+      inventory.current = adjust(inventory.current, id, delta);
+      setOwned(inventory.current.owned);
+    },
     player,
     setPlayer,
     /** Dernière image lue (texte brut), pour l'onglet de diagnostic. */
