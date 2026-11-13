@@ -409,11 +409,12 @@ describe('objets', () => {
 
 describe('mise à jour', () => {
   it('ne signale une mise à jour que si une autre version est réellement publiée', () => {
-    const release = { target_commitish: 'bbb', assets: [{}] };
-    expect(isNewer('aaa', release)).toBe(true);
-    expect(isNewer('bbb', release)).toBe(false);
-    expect(isNewer('', release)).toBe(false); // build local
-    expect(isNewer('aaa', { target_commitish: 'bbb', assets: [] })).toBe(false); // APK pas encore déposé
+    const a = 'a'.repeat(40);
+    const b = 'b'.repeat(40);
+    expect(isNewer(a, b + '\n')).toBe(true);
+    expect(isNewer(b, b)).toBe(false);
+    expect(isNewer('', b)).toBe(false); // build local
+    expect(isNewer(a, 'Not Found')).toBe(false); // fichier absent ou page d'erreur
   });
 });
 

@@ -49,6 +49,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest coop-tft.apk --target "$GITHUB_SHA" \
+          echo "$GITHUB_SHA" > version.txt
+          gh release create latest coop-tft.apk version.txt --target "$GITHUB_SHA" \
             --title "Coop TFT (dernière version)" \
             --notes "APK Android construit depuis main (${GITHUB_SHA::7})."

@@ -21,6 +21,8 @@ export interface Item {
   icon?: string;
   /** Recette : identifiants canoniques des deux composants. */
   from?: string[];
+  /** Vrai pour les objets standards ou propres au set en cours (pas les emblèmes d'anciens sets). */
+  current?: boolean;
 }
 
 export interface GameSet {

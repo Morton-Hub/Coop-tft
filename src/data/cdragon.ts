@@ -2,7 +2,7 @@ import { canon } from '../meta/aggregate';
 import type { Champion, GameSet, Item, Role, Trait } from './types';
 
 const BASE = 'https://raw.communitydragon.org/latest';
-const CACHE_KEY = 'coop-tft:data:v5';
+const CACHE_KEY = 'coop-tft:data:v6';
 const CACHE_TTL = 12 * 3600 * 1000;
 
 /* Forme (partielle) du fichier cdragon/tft/<locale>.json */
@@ -115,6 +115,7 @@ export function normalize(data: RawData): GameSet | undefined {
           name: it.name,
           icon: assetUrl(it.icon),
           ...(it.composition?.length === 2 ? { from: it.composition.map(canon) } : {}),
+          ...(ofSet.test(it.apiName) ? { current: true } : {}),
         };
     }
     const set = normalizeSet(raw, items);

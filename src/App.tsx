@@ -74,8 +74,18 @@ export default function App() {
   useEffect(() => {
     load(false);
     refreshMeta(false);
-    // La mise à jour ne concerne que l'app Android installée.
-    if (screenReaderAvailable()) updateAvailable().then(setUpdate);
+    // La mise à jour ne concerne que l'app Android installée : vérifiée à l'ouverture, puis à chaque
+    // retour dans l'app (au plus toutes les 10 minutes).
+    if (!screenReaderAvailable()) return;
+    let last = 0;
+    const check = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 600000) return;
+      last = Date.now();
+      updateAvailable().then((yes) => yes && setUpdate(true));
+    };
+    check();
+    document.addEventListener('visibilitychange', check);
+    return () => document.removeEventListener('visibilitychange', check);
   }, []);
 
   const screen = useScreenReader(set.champions, set.key, set.items);

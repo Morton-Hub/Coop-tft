@@ -29,9 +29,10 @@ describe('banc d’objets', () => {
   const items = {
     sword: { name: 'Épée', icon: 'u' },
     tear: { name: 'Larme', icon: 'u' },
-    shojin: { name: 'Lance de Shojin', icon: 'u', from: ['tear', 'sword'] },
+    shojin: { name: 'Lance de Shojin', icon: 'u', from: ['tear', 'sword'], current: true },
+    oldemblem: { name: 'Emblème d’un ancien set', icon: 'u', from: ['tear', 'sword'] }, // pas du set en cours
     radiant: { name: 'Objet radiant', icon: 'u' }, // ni composant ni fabricable : ignoré
-    noicon: { name: 'Sans icône', from: ['tear', 'tear'] },
+    noicon: { name: 'Sans icône', from: ['tear', 'tear'], current: true },
   };
 
   it('ne retient que les composants et les objets fabricables qui ont une icône', () => {

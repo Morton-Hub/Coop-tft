@@ -31,7 +31,9 @@ export const isAccepted = (distance: number, runnerUp: number) =>
 export function recognisable(items: Record<string, Item>): string[] {
   const ids = new Set<string>();
   for (const [key, item] of Object.entries(items)) {
-    if (item.from?.length !== 2) continue;
+    // Uniquement les objets du set en cours : les emblèmes d'anciens sets ne peuvent pas être sur le banc
+    // et ne feraient que créer de fausses ressemblances.
+    if (item.from?.length !== 2 || !item.current) continue;
     ids.add(key);
     for (const part of item.from) if (items[part]) ids.add(part);
   }
@@ -95,7 +97,7 @@ async function referenceFrame(url: string): Promise<PixelFrame> {
   }
 }
 
-const LIB_KEY = 'coop-tft:iconlib:v1';
+const LIB_KEY = 'coop-tft:iconlib:v2';
 
 /** Signatures des icônes officielles, calculées une fois par set puis gardées sur l'appareil. */
 export async function loadLibrary(setKey: string, items: Record<string, Item>): Promise<{ library: LibraryEntry[]; wanted: number }> {
