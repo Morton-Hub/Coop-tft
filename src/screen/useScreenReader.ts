@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Champion } from '../data/types';
+import type { Champion, Item } from '../data/types';
 import { adjust, createInventory, observe } from '../engine/inventory';
+import { benchCounts, decodeStrip, loadLibrary, readBench, type BenchRead } from './bench';
 import { readEndScreen } from './endgame';
+import type { LibraryEntry } from './icons';
 import { useStored } from '../storage';
 import {
   detectGame,
@@ -15,12 +17,14 @@ import {
   type Hud,
   type ScreenFrame,
 } from './match';
-import { requestSnapshot, setReaderInterval, startScreenReader } from './reader';
+import { requestBench, requestSnapshot, setReaderInterval, startScreenReader } from './reader';
 
 export interface Sample {
   t: number;
   f: ScreenFrame;
   lu: Hud;
+  /** Lecture du banc d'objets au même moment (distances comprises, pour le réglage). */
+  objets?: BenchRead[];
 }
 
 /** Cadence de lecture : rapide en partie, ralentie quand TFT n'est pas à l'écran pour épargner la batterie. */
@@ -31,7 +35,7 @@ const IDLE_MS = 4000;
  * Lecture de l'écran. Les images arrivent toutes les 1,5 s, mais l'interface n'est redessinée que
  * lorsque ce qu'on en tire change (boutique, manche, or…) : l'image brute reste dans une référence.
  */
-export function useScreenReader(champions: Champion[]) {
+export function useScreenReader(champions: Champion[], setKey: string, items: Record<string, Item>) {
   const [reading, setReading] = useState<'off' | 'starting' | 'on'>('off');
   const [error, setError] = useState('');
   const [view, setView] = useState<FrameView>(EMPTY_VIEW);
@@ -42,6 +46,43 @@ export function useScreenReader(champions: Champion[]) {
   /** Dernier écran de fin de partie reconnu. */
   const [ended, setEnded] = useState<{ placement: number; at: number } | null>(null);
   const inventory = useRef(createInventory());
+  /** Objets reconnus sur le banc (confirmés par deux lectures identiques). */
+  const [bench, setBench] = useState<Record<string, number>>({});
+  const [benchInfo, setBenchInfo] = useState({ loaded: 0, wanted: 0 });
+  const library = useRef<LibraryEntry[]>([]);
+  const benchState = useRef({ last: [] as BenchRead[], lastKey: '', shownKey: '', lastAsk: 0 });
+
+  // Icônes de référence : chargées quand la lecture démarre, puis gardées sur l'appareil.
+  useEffect(() => {
+    if (reading !== 'on') return;
+    let alive = true;
+    loadLibrary(setKey, items).then((r) => {
+      if (!alive) return;
+      library.current = r.library;
+      setBenchInfo({ loaded: r.library.length, wanted: r.wanted });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [reading, setKey, items]);
+
+  const onBench = useCallback((png: string) => {
+    decodeStrip(png)
+      .then((strip) => {
+        const reads = readBench(strip, library.current);
+        const bs = benchState.current;
+        const counts = benchCounts(reads);
+        const key = JSON.stringify(Object.entries(counts).sort());
+        // Retenu seulement si deux lectures de suite donnent le même banc.
+        if (key === bs.lastKey && key !== bs.shownKey) {
+          bs.shownKey = key;
+          setBench(counts);
+        }
+        bs.lastKey = key;
+        bs.last = reads;
+      })
+      .catch(() => {});
+  }, []);
   const [player, setPlayer] = useStored('coop-tft:pseudo', '');
   const [samples, setSamples] = useStored<Sample[]>('coop-tft:samples', []);
 
@@ -106,12 +147,18 @@ export function useScreenReader(champions: Champion[]) {
     // Relevés et images de réglage : un par minute en partie, pour ajuster la lecture après coup.
     if (playing && now - st.lastSample > 60000) {
       st.lastSample = now;
-      setSamples((prev) => [...prev.slice(-5), { t: now, f, lu: hud }]);
+      setSamples((prev) => [...prev.slice(-5), { t: now, f, lu: hud, objets: benchState.current.last }]);
     }
     if (playing && st.autoShots < 15 && now - st.lastShot > 60000) {
       st.lastShot = now;
       st.autoShots++;
       requestSnapshot();
+    }
+
+    // Banc d'objets : relu toutes les 6 s en partie (il change rarement), si les références sont prêtes.
+    if (playing && library.current.length && now - benchState.current.lastAsk > 6000) {
+      benchState.current.lastAsk = now;
+      requestBench();
     }
 
     st.idleFrames = next.gameState === 'none' ? st.idleFrames + 1 : 0;
@@ -145,13 +192,14 @@ export function useScreenReader(champions: Champion[]) {
           setError(reason);
         },
         (saved) => setShots((x) => (saved ? { ...x, saved: x.saved + 1 } : { ...x, failed: x.failed + 1 })),
+        onBench,
       );
       setReading('on');
     } catch (e) {
       setReading('off');
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [onFrame]);
+  }, [onFrame, onBench]);
 
   useEffect(() => () => void stop.current?.(), []);
 
@@ -164,6 +212,10 @@ export function useScreenReader(champions: Champion[]) {
     samples,
     owned,
     ended,
+    bench,
+    benchInfo,
+    /** Dernière lecture brute du banc, distances comprises. */
+    benchReads: benchState.current.last,
     /** Correction manuelle de l'inventaire (une vente, par exemple). */
     adjustOwned: (id: string, delta: number) => {
       inventory.current = adjust(inventory.current, id, delta);

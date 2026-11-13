@@ -78,8 +78,8 @@ export default function App() {
     if (screenReaderAvailable()) updateAvailable().then(setUpdate);
   }, []);
 
-  const screen = useScreenReader(set.champions);
-  const { reading, hud: autoRead, shop, gameState, shots, samples, player, setPlayer, frame, owned, ended } = screen;
+  const screen = useScreenReader(set.champions, set.key, set.items);
+  const { reading, hud: autoRead, shop, gameState, shots, samples, player, setPlayer, frame, owned, ended, bench } = screen;
   const [history, setHistory] = useStored<GameRecord[]>('coop-tft:history', []);
   // Le texte brut change à chaque image : on ne le suit que lorsque son onglet est ouvert.
   screen.watchRaw(tab === 'screen');
@@ -126,7 +126,10 @@ export default function App() {
   );
   const allNeeds = itemNeeds.flatMap((n) => n.needs);
   const parts = componentPriority(allNeeds);
-  const ready = buildable(allNeeds, held);
+  // Composants en main : ceux reconnus sur le banc quand la lecture en trouve, sinon la saisie manuelle.
+  const benchSeen = reading === 'on' && Object.keys(bench).length > 0;
+  const inHand = benchSeen ? bench : held;
+  const ready = buildable(allNeeds, inHand);
 
   // Fin de partie reconnue à l'écran : on l'ajoute à l'historique avec la compo qui était visée.
   useEffect(() => {
@@ -195,9 +198,17 @@ export default function App() {
   };
   const copyDiagnostic = () =>
     frame &&
-    copy({ w: frame.width, h: frame.height, etat: gameState, boutique: shop.map((c) => c.name), lu: autoRead, lignes: lines(frame) });
+    copy({
+      w: frame.width,
+      h: frame.height,
+      etat: gameState,
+      boutique: shop.map((c) => c.name),
+      lu: autoRead,
+      objets: screen.benchReads,
+      lignes: lines(frame),
+    });
   const copySamples = () =>
-    copy({ releves: samples.map((x) => ({ w: x.f.width, h: x.f.height, lu: x.lu, lignes: lines(x.f) })) });
+    copy({ releves: samples.map((x) => ({ w: x.f.width, h: x.f.height, lu: x.lu, objets: x.objets, lignes: lines(x.f) })) });
 
   const topTip = tips.find((t) => t.level === 'warn') ?? tips[0];
   const full = units.length >= level;
@@ -447,7 +458,7 @@ export default function App() {
 
                   {ready.length > 0 && (
                     <div className="card gold">
-                      <h4>Objet faisable maintenant</h4>
+                      <h4>Objet faisable maintenant{benchSeen && <em className="auto">auto</em>}</h4>
                       {ready.map((n, k) => (
                         <div key={k} className="itemline">
                           {n.item.icon && <img src={n.item.icon} alt="" />}
@@ -464,6 +475,17 @@ export default function App() {
                         <small key={k}>{t.text}</small>
                       ))}
                       <button onClick={() => setBoard(autoArrange(board, set))}>Corriger automatiquement</button>
+                    </div>
+                  )}
+
+                  {benchSeen && (
+                    <div className="card">
+                      <h4>Tes objets (lus à l'écran)</h4>
+                      <small>
+                        {Object.entries(bench)
+                          .map(([id, n]) => `${set.items[id]?.name ?? id}${n > 1 ? ` ×${n}` : ''}`)
+                          .join(', ')}
+                      </small>
                     </div>
                   )}
 
@@ -838,6 +860,18 @@ export default function App() {
                         Ton pseudo en jeu (pour lire tes PV)
                         <input value={player} onChange={(e) => setPlayer(e.target.value)} placeholder="détecté en partie" />
                       </label>
+                      <p className="readout">
+                        Objets : <b>{screen.benchInfo.loaded}</b>/{screen.benchInfo.wanted} icônes de référence chargées ·
+                        lus :{' '}
+                        {screen.benchReads.length
+                          ? screen.benchReads
+                              .map(
+                                (r) =>
+                                  `${r.accepted ? '✓' : '✗'} ${set.items[r.id]?.name ?? r.id} (${r.distance.toFixed(3)} / ${r.runnerUp.toFixed(3)})`,
+                              )
+                              .join(' · ')
+                          : '—'}
+                      </p>
                       <button onClick={() => requestSnapshot()}>Enregistrer une image maintenant</button>
                       <p className="readout">
                         Images enregistrées dans la galerie (album CoopTFT) : <b>{shots.saved}</b>

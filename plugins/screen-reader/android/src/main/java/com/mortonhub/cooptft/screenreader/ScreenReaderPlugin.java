@@ -72,6 +72,19 @@ public class ScreenReaderPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Demande la colonne d'objets de la prochaine image (événement « bench »). */
+    @PluginMethod
+    public void bench(PluginCall call) {
+        CaptureService.benchRequested = true;
+        call.resolve();
+    }
+
+    void emitBench(String png) {
+        JSObject data = new JSObject();
+        data.put("png", png);
+        notifyListeners("bench", data);
+    }
+
     void emitSnapshot(boolean saved) {
         JSObject data = new JSObject();
         data.put("saved", saved);

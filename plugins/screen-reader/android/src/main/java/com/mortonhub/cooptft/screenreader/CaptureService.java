@@ -49,6 +49,9 @@ public class CaptureService extends Service {
     /** Demande d'enregistrer la prochaine image capturée dans la galerie (album CoopTFT). */
     static volatile boolean snapshotRequested;
 
+    /** Demande d'envoyer à l'interface la colonne d'objets (bord gauche du jeu) de la prochaine image. */
+    static volatile boolean benchRequested;
+
     /** Intervalle entre deux lectures, modifiable en cours de route (ralenti hors partie). */
     static volatile int interval = 1500;
 
@@ -156,6 +159,10 @@ public class CaptureService extends Service {
                             snapshotRequested = false;
                             saveToGallery(bitmap);
                         }
+                        if (benchRequested) {
+                            benchRequested = false;
+                            sendBench(bitmap);
+                        }
                         busy = true;
                         recognizer
                             .process(InputImage.fromBitmap(bitmap, 0))
@@ -208,6 +215,28 @@ public class CaptureService extends Service {
             if (((p >> 16) & 0xff) > 16 || ((p >> 8) & 0xff) > 16 || (p & 0xff) > 16) return false;
         }
         return true;
+    }
+
+    /**
+     * Envoie la bande gauche de la zone de jeu (où se trouve la colonne d'objets), réduite de moitié
+     * et encodée en PNG : l'interface y compare les icônes à celles des objets connus.
+     */
+    private void sendBench(Bitmap game) {
+        ScreenReaderPlugin plugin = ScreenReaderPlugin.instance;
+        if (plugin == null) return;
+        try {
+            int height = game.getHeight();
+            int width = Math.min(game.getWidth(), Math.round(height * 0.14f));
+            Bitmap strip = Bitmap.createBitmap(game, 0, 0, width, height);
+            Bitmap small = Bitmap.createScaledBitmap(strip, Math.max(1, width / 2), Math.max(1, height / 2), true);
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            small.compress(Bitmap.CompressFormat.PNG, 100, out);
+            if (small != strip) small.recycle();
+            strip.recycle();
+            plugin.emitBench(android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP));
+        } catch (Exception ignored) {
+            // Bande indisponible sur cette image : la prochaine demande réessaiera.
+        }
     }
 
     /** Enregistre l'image telle que l'app la voit, pour pouvoir régler la lecture après coup. */

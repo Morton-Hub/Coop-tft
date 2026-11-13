@@ -5,10 +5,12 @@ interface ScreenReaderPlugin {
   start(options: { intervalMs: number }): Promise<void>;
   stop(): Promise<void>;
   snapshot(): Promise<void>;
+  bench(): Promise<void>;
   setInterval(options: { intervalMs: number }): Promise<void>;
   addListener(event: 'screenText', cb: (frame: ScreenFrame) => void): Promise<PluginListenerHandle>;
   addListener(event: 'stopped', cb: (info: { reason: string }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'snapshot', cb: (info: { saved: boolean }) => void): Promise<PluginListenerHandle>;
+  addListener(event: 'bench', cb: (info: { png: string }) => void): Promise<PluginListenerHandle>;
 }
 
 const plugin = registerPlugin<ScreenReaderPlugin>('ScreenReader');
@@ -20,11 +22,13 @@ export async function startScreenReader(
   onFrame: (frame: ScreenFrame) => void,
   onStopped: (reason: string) => void,
   onSnapshot: (saved: boolean) => void,
+  onBench: (png: string) => void,
 ): Promise<() => Promise<void>> {
   const handles = [
     await plugin.addListener('screenText', onFrame),
     await plugin.addListener('stopped', (info) => onStopped(info.reason)),
     await plugin.addListener('snapshot', (info) => onSnapshot(info.saved)),
+    await plugin.addListener('bench', (info) => onBench(info.png)),
   ];
   try {
     await plugin.start({ intervalMs: 1500 });
@@ -43,3 +47,6 @@ export const requestSnapshot = () => plugin.snapshot().catch(() => {});
 
 /** Change la cadence de capture sans relancer la lecture. */
 export const setReaderInterval = (intervalMs: number) => plugin.setInterval({ intervalMs }).catch(() => {});
+
+/** Demande la colonne d'objets de la prochaine image capturée. */
+export const requestBench = () => plugin.bench().catch(() => {});
