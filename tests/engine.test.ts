@@ -3,7 +3,7 @@ import { classifyRole, normalize } from '../src/data/cdragon';
 import { DEMO_SET } from '../src/data/demo';
 import type { Board } from '../src/data/types';
 import { analyze, autoArrange, bestHex, colOf, hex, mirror, rowOf } from '../src/engine/positioning';
-import { advise, expectedLevel, hitChance, interest, keyLevel } from '../src/engine/economy';
+import { advise, expectedLevel, hitChance, income, interest, keyLevel, streakGold } from '../src/engine/economy';
 import { buildable, componentPriority, resolveItems } from '../src/engine/items';
 import { suggest } from '../src/engine/suggest';
 import {
@@ -287,11 +287,12 @@ describe('lecture de l’écran', () => {
 
   it('lit manche, niveau, XP, or et probabilités sur les relevés réels', () => {
     expect(real.map((f) => readHud(f))).toEqual([
-      { stage: '5-6', level: 7, xp: { have: 18, total: 56 }, gold: 39 }, // « 939 » : pièce lue comme un 9
-      { stage: '5-7', level: 7, xp: { have: 20, total: 56 }, gold: 46 },
-      { stage: '6-1', level: 8, xp: { have: 2, total: 68 }, gold: 22, odds: [15, 20, 32, 30, 3] },
+      { stage: '5-6', level: 7, xp: { have: 18, total: 56 }, gold: 39, streak: 4 }, // « 939 » : pièce lue comme un 9
+      { stage: '5-7', level: 7, xp: { have: 20, total: 56 }, gold: 46, streak: 5 },
+      { stage: '6-1', level: 8, xp: { have: 2, total: 68 }, gold: 22, odds: [15, 20, 32, 30, 3], streak: 5 },
+      // Série non lue à 6-3 : une infobulle recouvrait la zone.
       { stage: '6-3', level: 8, xp: { have: 6, total: 68 }, gold: 12, odds: [15, 20, 32, 30, 3] },
-      { stage: '6-5', xp: { have: 8, total: 68 }, gold: 10, odds: [15, 20, 32, 30, 3] }, // niveau non lu cette fois
+      { stage: '6-5', xp: { have: 8, total: 68 }, gold: 10, odds: [15, 20, 32, 30, 3], streak: 8 }, // niveau non lu cette fois
     ]);
     expect(real.every((f) => detectGame(f, []) === 'game')).toBe(true);
   });
@@ -350,6 +351,8 @@ describe('économie', () => {
     expect(keyLevel(4)).toBe(8);
     expect(interest(37)).toBe(3);
     expect(interest(80)).toBe(5);
+    expect([0, 2, 3, 4, 5, 6, 9].map(streakGold)).toEqual([0, 0, 1, 1, 2, 3, 3]);
+    expect(income(34, 5)).toBe(5 + 3 + 2);
     expect(expectedLevel('3-2')).toBe(6);
     expect(expectedLevel('4-5')).toBe(8);
     // Les 4 PO sont introuvables au niveau 4, et de plus en plus fréquents ensuite.

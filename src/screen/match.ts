@@ -92,6 +92,8 @@ export interface Hud {
   odds?: number[];
   /** Progression d'XP vers le niveau suivant. */
   xp?: { have: number; total: number };
+  /** Série en cours (victoires ou défaites d'affilée) : le petit nombre à flamme au-dessus de l'or. */
+  streak?: number;
 }
 
 const center = (l: ScreenLine) => ({ x: l.x + l.w / 2, y: l.y + l.h / 2 });
@@ -120,6 +122,7 @@ export function readPlayerName(frame: ScreenFrame): string | undefined {
 export function readHud(frame: ScreenFrame, playerName?: string): Hud {
   const hud: Hud = {};
   let buyXp: ScreenLine | undefined;
+  let goldLine: ScreenLine | undefined;
   for (const l of frame.lines) {
     const text = l.text.trim();
     const stage = /^([1-9])\s*[-–]\s*([1-7])$/.exec(text);
@@ -154,7 +157,25 @@ export function readHud(frame: ScreenFrame, playerName?: string): Hud {
         const allDigits = /^\d+$/.test(text);
         if (allDigits && value.length >= 2 && l.w > value.length * l.h * 0.46 * 1.3) value = value.slice(1);
         hud.gold = Number(value);
+        goldLine = l;
       }
+    }
+    // La série est le petit nombre posé juste au-dessus de l'or ; sa flamme est lue comme un « o » ou rien.
+    if (goldLine) {
+      const g = goldLine;
+      const badge = frame.lines.find(
+        (l) =>
+          l !== g &&
+          l.h < g.h * 0.7 &&
+          l.y < g.y - g.h * 0.6 &&
+          l.y > g.y - g.h * 2.4 &&
+          // Repéré depuis le bord droit de l'or, stable que l'icône de pièce ait été lue avec ou non.
+          l.x > g.x + g.w - g.h * 3.5 &&
+          l.x < g.x + g.w &&
+          /^\D{0,2}\s?\d{1,2}$/.test(l.text.trim()),
+      );
+      const n = badge && Number(/(\d{1,2})$/.exec(badge.text.trim())![1]);
+      if (n !== undefined && n <= 30) hud.streak = n;
     }
   }
 
@@ -201,7 +222,7 @@ export const EMPTY_VIEW: FrameView = { shop: [], gameState: 'none', hud: {} };
 /** Ne garde d'une lecture que les valeurs identiques à la lecture précédente. */
 export function stableHud(hud: Hud, prev: Hud): Hud {
   const stable: Hud = {};
-  for (const k of ['stage', 'level', 'gold', 'hp'] as const)
+  for (const k of ['stage', 'level', 'gold', 'hp', 'streak'] as const)
     if (hud[k] !== undefined && hud[k] === prev[k]) (stable as Record<string, unknown>)[k] = hud[k];
   if (hud.odds && hud.odds.join() === prev.odds?.join()) stable.odds = hud.odds;
   if (hud.xp && hud.xp.have === prev.xp?.have && hud.xp.total === prev.xp?.total) stable.xp = hud.xp;

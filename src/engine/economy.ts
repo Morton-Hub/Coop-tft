@@ -39,6 +39,8 @@ export interface Situation {
   stage: string;
   /** Or réellement nécessaire pour le prochain niveau, quand l'XP est lue à l'écran. */
   levelCost?: number;
+  /** Série en cours, quand elle est lue à l'écran. */
+  streak?: number;
 }
 export interface Plan {
   /** Unités recherchées (celles de la compo visée). */
@@ -67,6 +69,10 @@ export const expectedLevel = (stage: string) =>
   CURVE.reduce((lvl, [at, l]) => (stageValue(stage) >= at ? l : lvl), 3);
 export const keyLevel = (carryCost: number) => KEY_LEVEL[Math.min(5, Math.max(1, carryCost))];
 export const interest = (gold: number) => Math.min(5, Math.floor(gold / 10));
+/** Or de série par tour (victoires comme défaites) : barème classique, à confirmer pour le set en cours. */
+export const streakGold = (streak: number) => (streak >= 6 ? 3 : streak === 5 ? 2 : streak >= 3 ? 1 : 0);
+/** Revenu d'un tour : 5 or de base, les intérêts et la série (l'or de victoire n'est pas compté). */
+export const income = (gold: number, streak = 0) => 5 + interest(gold) + streakGold(streak);
 
 /** Chance (0-1) qu'une boutique de 5 cases contienne au moins une des unités recherchées. */
 export function hitChance(level: number, targets: Champion[], set: GameSet, liveOdds?: number[]): number {
@@ -111,6 +117,8 @@ export function advise(sit: Situation, plan: Plan, set: GameSet): Advice {
       `Les top 4 finissent niveau ${plan.keyLevel} avec cette compo : une fois ton plateau stabilisé, reconstruis ton or pour y monter.`,
     );
   const toNext = 10 - (gold % 10);
+  if (sit.streak && streakGold(sit.streak) > 0)
+    reasons.push(`Série de ${sit.streak} : +${streakGold(sit.streak)} or par tour, soit ${income(gold, sit.streak)} or de revenu.`);
   const interestNote =
     gold < 50
       ? `${interest(gold)} or d'intérêts par tour ; encore ${toNext} or pour le palier suivant.`

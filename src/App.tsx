@@ -4,7 +4,7 @@ import { Bar, Icon } from './components';
 import { loadSet } from './data/cdragon';
 import { DEMO_SET } from './data/demo';
 import { COLS, ROWS, type Board, type Champion, type GameSet } from './data/types';
-import { advise, hitChance, interest, type Action, type Situation } from './engine/economy';
+import { advise, hitChance, income, interest, type Action, type Situation } from './engine/economy';
 import { buildable, componentPriority, resolveItems } from './engine/items';
 import { analyze, autoArrange, bestHex, hex, mirror, SCOUTING_CHECKLIST } from './engine/positioning';
 import { suggest } from './engine/suggest';
@@ -103,14 +103,15 @@ export default function App() {
     reading === 'on' && autoRead.xp && autoRead.level === level
       ? Math.ceil((autoRead.xp.total - autoRead.xp.have) / 4) * 4
       : undefined;
-  const situation: Situation = { level, ...game, levelCost };
+  const streak = reading === 'on' ? autoRead.streak : undefined;
+  const situation: Situation = { level, ...game, levelCost, streak };
   const econ = useMemo(
     () => (carry ? advise(
-            { level, ...game, levelCost },
+            { level, ...game, levelCost, streak },
             { targets: [carry], carryCost: carry.cost, keyLevel: plan?.level, reroll: plan?.reroll, odds: liveOdds },
             set,
           ) : null),
-    [level, game, units, carry, set, plan, liveOdds, levelCost],
+    [level, game, units, carry, set, plan, liveOdds, levelCost, streak],
   );
   const itemNeeds = useMemo(
     () =>
@@ -525,6 +526,11 @@ export default function App() {
                         />
                       </label>
                     </div>
+                    <small>
+                      Revenu : +{income(game.gold, streak)} or par tour
+                      {streak ? ` (série de ${streak})` : ''}
+                      {levelCost !== undefined && ` · niveau suivant : ${levelCost} or`}
+                    </small>
                   </div>
                 </>
               )}
@@ -770,7 +776,8 @@ export default function App() {
                         Lu à l'écran : manche <b>{autoRead.stage ?? '—'}</b> · niveau <b>{autoRead.level ?? '—'}</b> · or{' '}
                         <b>{autoRead.gold ?? '—'}</b> · PV <b>{autoRead.hp ?? '—'}</b> · boutique{' '}
                         <b>{autoRead.odds ? autoRead.odds.join('/') : '—'}</b> · XP{' '}
-                        <b>{autoRead.xp ? `${autoRead.xp.have}/${autoRead.xp.total}` : '—'}</b>
+                        <b>{autoRead.xp ? `${autoRead.xp.have}/${autoRead.xp.total}` : '—'}</b> · série{' '}
+                        <b>{autoRead.streak ?? '—'}</b>
                       </p>
                       <label className="check">
                         Ton pseudo en jeu (pour lire tes PV)
