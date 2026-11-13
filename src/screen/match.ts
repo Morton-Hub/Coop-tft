@@ -210,6 +210,31 @@ export function guessPlayerName(frame: ScreenFrame): string | undefined {
   return undefined;
 }
 
+/**
+ * Fiche d'unité : quand le joueur tape une unité, le jeu ouvre un panneau avec son nom et, juste
+ * en dessous, ses PV sous la forme « 650/650 ». C'est le seul endroit où une unité du plateau ou du
+ * banc est nommée en toutes lettres. Les cartes de boutique portent aussi un nom, mais jamais suivi
+ * d'une ligne de PV.
+ */
+export function readUnitPanel(frame: ScreenFrame, champions: Champion[]): Champion | undefined {
+  const byName = new Map(champions.map((c) => [normText(c.name), c]));
+  for (const line of frame.lines) {
+    const c = byName.get(normText(line.text)) ?? byName.get(normText(cardName(line.text)));
+    if (!c) continue;
+    const hasHealth = frame.lines.some(
+      (l) =>
+        l !== line &&
+        /^\d{1,5}\s*\/\s*\d{2,5}$/.test(l.text.trim()) &&
+        l.y > line.y + line.h * 0.4 &&
+        l.y < line.y + line.h * 3 &&
+        l.x + l.w / 2 > line.x &&
+        l.x + l.w / 2 < line.x + line.h * 16,
+    );
+    if (hasHealth) return c;
+  }
+  return undefined;
+}
+
 /** Ce que l'interface a besoin de connaître d'une image : tout le reste du texte lu est ignoré. */
 export interface FrameView {
   shop: Champion[];

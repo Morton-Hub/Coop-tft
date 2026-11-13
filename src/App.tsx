@@ -517,7 +517,10 @@ export default function App() {
                         ))}
                       </div>
                       {missing.length > 0 && <small>Il te manque : {missing.map((u) => u.name).join(', ')}</small>}
-                      <small className="muted">Déduit de la boutique : approximatif. Tape une unité vendue pour la retirer.</small>
+                      <small className="muted">
+                        Déduit de la boutique et des unités que tu tapes dans le jeu : approximatif. Tape ici une unité
+                        vendue pour la retirer.
+                      </small>
                     </div>
                   )}
 

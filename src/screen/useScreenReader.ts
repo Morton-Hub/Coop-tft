@@ -11,6 +11,7 @@ import {
   guessPlayerName,
   readHud,
   readShop,
+  readUnitPanel,
   stableHud,
   viewKey,
   type FrameView,
@@ -100,6 +101,7 @@ export function useScreenReader(champions: Champion[], setKey: string, items: Re
     interval: FAST_MS,
     watchRaw: false,
     endPlacement: 0,
+    lastPanel: '',
     endAt: 0,
   });
   const stop = useRef<(() => Promise<void>) | null>(null);
@@ -125,6 +127,18 @@ export function useScreenReader(champions: Champion[], setKey: string, items: Re
     const inv = observe(inventory.current, { shop: shopRead.shop, gold: hud.gold, stage: hud.stage, level: hud.level, at: Date.now() });
     if (inv.owned !== inventory.current.owned) setOwned(inv.owned);
     inventory.current = inv;
+
+    // Fiche d'unité ouverte : le joueur vient de taper une unité, dont le nom est écrit. On la note
+    // comme possédée si l'inventaire ne la connaissait pas (une unité adverse tapée peut s'y glisser :
+    // elle se retire d'un tap dans la carte des achats).
+    const tapped = readUnitPanel(f, champs);
+    if (tapped && tapped.id !== st.lastPanel) {
+      if (!inventory.current.owned[tapped.id]) {
+        inventory.current = adjust(inventory.current, tapped.id, 1);
+        setOwned(inventory.current.owned);
+      }
+    }
+    st.lastPanel = tapped?.id ?? '';
 
     // Fin de partie : le classement est noté une fois par écran de résultats.
     if (name) {

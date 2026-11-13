@@ -14,6 +14,7 @@ import {
   normText,
   readHud,
   readShop,
+  readUnitPanel,
   stableHud,
   viewKey,
 } from '../src/screen/match';
@@ -295,6 +296,24 @@ describe('lecture de l’écran', () => {
       { stage: '6-5', xp: { have: 8, total: 68 }, gold: 10, odds: [15, 20, 32, 30, 3], streak: 8 }, // niveau non lu cette fois
     ]);
     expect(real.every((f) => detectGame(f, []) === 'game')).toBe(true);
+  });
+
+  it('lit le nom de l’unité tapée dans sa fiche, sans confondre avec la boutique', () => {
+    const l = (text: string, x: number, y: number, w = 150, h = 28) => ({ text, x, y, w, h });
+    // Fiche ouverte à droite (positions relevées sur une capture, zone de jeu 2256 × 1192).
+    const panel = {
+      width: 2256,
+      height: 2504,
+      lines: [
+        l('Jungle', 1930, 106), l('Chasseur', 1930, 164),
+        l('Krug 1', 1886, 222, 330), l('0/500', 2038, 258, 62, 24), l('48/50', 2038, 294, 62, 24),
+        l('70', 1890, 690, 30), l('76 %', 1955, 690, 50),
+        l('Acheter XP', 36, 1042, 160, 30), l('4/20', 86, 936, 60, 24),
+      ],
+    };
+    expect(readUnitPanel(panel, roster)?.name).toBe('Krug');
+    // Les relevés réels (boutique ouverte, aucune fiche) ne déclenchent rien.
+    expect(real.map((f) => readUnitPanel(f, roster))).toEqual([undefined, undefined, undefined, undefined, undefined]);
   });
 
   it('ne redessine que si ce qui est tiré de l’image change', () => {
